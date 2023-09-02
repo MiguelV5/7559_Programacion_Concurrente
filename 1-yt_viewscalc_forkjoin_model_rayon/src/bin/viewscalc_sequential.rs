@@ -16,7 +16,7 @@ fn run_sequential_viewscount() -> Result<(), Box<dyn std::error::Error>> {
             let line = match l {
                 Ok(line) => line,
                 Err(_) => {
-                    return (String::from(""), 0);
+                    return HashMap::new();
                 }
             };
             let line = line.replace("\"", "");
@@ -37,11 +37,15 @@ fn run_sequential_viewscount() -> Result<(), Box<dyn std::error::Error>> {
                 None => 0,
             };
 
-            (channel_title, views)
+            let mut views_instance_for_channel = HashMap::new();
+            views_instance_for_channel.insert(channel_title, views);
+            views_instance_for_channel
         })
-        .fold(HashMap::new(), |mut acc, (channel_title, views)| {
-            let entry = acc.entry(channel_title).or_insert(0);
-            *entry += views;
+        .fold(HashMap::new(), |mut acc, views_instance| {
+            for (channel_title, views) in views_instance {
+                let entry = acc.entry(channel_title).or_insert(0);
+                *entry += views;
+            }
             acc
         });
 
