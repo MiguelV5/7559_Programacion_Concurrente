@@ -1,4 +1,4 @@
-# [75.59] (PRIV) Tecnicas de Programacion Concurrente I - Curso Deymonnaz - 2c2023
+# [75.59] Tecnicas de Programacion Concurrente I - Curso Deymonnaz - 2c2023
 
 ---
 
@@ -14,8 +14,8 @@
 <br>
 <p align="center">
 <font size="+3">
-Repositorio con ejercicios opcionales dados en la clases practicas.
-
+Repositorio con trabajos prácticos de la materia, examenes y ejercicios adicionales dados en clase.
+( Repo original para entrega TP: <a href="https://github.com/">aquí</a> )
 <br>
 <br>
 Segundo Cuatrimestre - 2023
