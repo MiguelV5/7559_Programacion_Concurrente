@@ -35,5 +35,7 @@ Realizar el DAG del problema
 
 ---
 
-## 4. Realice una Red de Petri del problema Productor-Consumidor con buffer acotado.
+#### 4. Realice una Red de Petri del problema Productor-Consumidor con buffer acotado.
+
+---
 
