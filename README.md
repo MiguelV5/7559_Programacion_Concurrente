@@ -15,6 +15,7 @@
 <p align="center">
 <font size="+3">
 Repositorio con trabajos prácticos de la materia, examenes y ejercicios adicionales dados en clase.
+<br>
 ( Repo original para entrega TP: <a href="https://github.com/">aquí</a> )
 <br>
 <br>
