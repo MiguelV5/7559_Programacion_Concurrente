@@ -1,0 +1,10 @@
+.vscode/
+*.csv
+
+
+**/debug/
+**/target/
+
+**/*.rs.bk
+
+*.pdb
