@@ -18,7 +18,8 @@
 
 #### 2. Desarrolle pseudo codigo de Rust para solucionar el siguiente problema:
 
-Se quiere medir una aproximacion del tiempo de latencia que experimenta un servicio de conexión a internet.Para ello se requiere desarrollar un programa que realiza peticiones concurrentemente a distintos sitios web que se obtienen como lineas a partir de un archivo (El archivo tiene 100 lineas).
+Se quiere medir una aproximacion del tiempo de latencia que experimenta un servicio de conexión a internet.
+Para ello se requiere desarrollar un programa que realiza peticiones concurrentemente a distintos sitios web que se obtienen como lineas a partir de un archivo (El archivo tiene 100 lineas).
 El programa deberá realizar una peticion por sitio, de manera concurrente, y calcular el tiempo que
 tarda la peticion en ser respondida. Al finalizar se debe promediar el tiempo de demora de todos los sitios.
 Para modelar las request utilice `thread::sleep` con una duración random en segundos.
