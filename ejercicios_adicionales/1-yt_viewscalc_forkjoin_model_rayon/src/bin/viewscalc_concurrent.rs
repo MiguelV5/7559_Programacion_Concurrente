@@ -7,7 +7,7 @@ use std::{
 
 use rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 
-fn run_sequential_viewscount() -> Result<(), Box<dyn std::error::Error>> {
+fn run_concurrent_viewscount() -> Result<(), Box<dyn std::error::Error>> {
     let result = read_dir("./data")?
         .map(|direntry| direntry.unwrap().path())
         .collect::<Vec<PathBuf>>()
@@ -89,7 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let start_time = std::time::Instant::now();
 
-    let result = run_sequential_viewscount();
+    let result = run_concurrent_viewscount();
     match result {
         Ok(_) => println!("\n  Benchmark finished successfully!\n"),
         Err(err) => {
