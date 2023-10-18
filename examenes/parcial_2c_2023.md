@@ -10,7 +10,7 @@
 - Backend de un juego en linea.
 
 
-(***Nota de clase post-parcial:*** *Las ultimas dos son medio ambiguas, pero apuntaban a:*
+(***Nota de clase post-parcial:*** *Las ultimas dos son medio ambiguas, pero creo que apuntaban a:*
 - *Procesamiento de varios archivos con logs, datos independientes.*
 - *Conexiones establecidas entre jugadores y estado compartido de recursos*)
 
@@ -28,7 +28,7 @@ limite de N peticiones para no saturar la red y para limitar el numero de thread
 
 Realizar el DAG del problema
 
-(***Nota de clase post-parcial:*** *Algo que podia confundirse era si el problema requeria solucionarse con async o con map-reduce utilizando rayon. La idea apuntaba a la segunda, justamente para poder realizar el DAG.*)
+(***Nota de clase post-parcial:*** *Algo que podia confundirse era si el problema requeria solucionarse con async o con map-reduce utilizando rayon. Creo que la idea apuntaba a la segunda, justamente para poder realizar el DAG.*)
 
 ---
 
