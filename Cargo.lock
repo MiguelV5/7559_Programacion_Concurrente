@@ -3,6 +3,10 @@
 version = 3
 
 [[package]]
+name = "database"
+version = "0.1.0"
+
+[[package]]
 name = "e-commerce"
 version = "0.1.0"
 dependencies = [
