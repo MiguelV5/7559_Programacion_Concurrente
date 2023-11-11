@@ -45,7 +45,7 @@ impl OrdersParser {
             let product_fields: Vec<&str> = str_product.split(':').collect();
             if product_fields.len() != 2 {
                 return Err(OrdersParserError::CannotParseLine(
-                    "[OrdersParserError] Cannot parse a product".to_string(),
+                    "[OrdersParserError] Cannot parse a product.".to_string(),
                 ));
             }
 
@@ -163,7 +163,7 @@ mod tests_orders_parser {
         assert_eq!(
             parser,
             Err(OrdersParserError::CannotParseLine(
-                "[OrdersParserError] Cannot parse a product".to_string()
+                "[OrdersParserError] Cannot parse a product.".to_string()
             ))
         );
 
