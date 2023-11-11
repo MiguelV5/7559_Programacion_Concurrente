@@ -1,25 +1,10 @@
+use crate::model::order::Order;
+use crate::model::product::Product;
+
 use std::{
     fs::File,
     io::{BufRead, BufReader},
-    num::ParseIntError,
 };
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Product {
-    name: String,
-    quantity: u32,
-}
-
-impl Product {
-    pub fn new(name: String, quantity: u32) -> Self {
-        Product { name, quantity }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Order {
-    products: Vec<Product>,
-}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum OrdersParserError {
@@ -29,7 +14,7 @@ pub enum OrdersParserError {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct OrdersParser {
+pub struct OrdersParser {
     orders: Vec<Order>,
 }
 
@@ -43,37 +28,37 @@ impl OrdersParser {
             .map(|result| {
                 let line =
                     result.map_err(|err| OrdersParserError::CannotReadLine(err.to_string()))?;
-                parse_line(line)
+                Self::parse_line(line)
             })
             .collect::<Result<Vec<Order>, OrdersParserError>>()?;
         Ok(OrdersParser { orders })
     }
 
-    fn get_orders(&self) -> Vec<Order> {
+    pub fn get_orders(&self) -> Vec<Order> {
         self.orders.clone()
     }
-}
 
-fn parse_line(line: String) -> Result<Order, OrdersParserError> {
-    let mut products = vec![];
+    fn parse_line(line: String) -> Result<Order, OrdersParserError> {
+        let mut products = vec![];
 
-    for str_product in line.split(';') {
-        let product_fields: Vec<&str> = str_product.split(':').collect();
-        if product_fields.len() != 2 {
-            return Err(OrdersParserError::CannotParseLine(
-                "[OrdersParserError] Cannot parse a product".to_string(),
-            ));
+        for str_product in line.split(';') {
+            let product_fields: Vec<&str> = str_product.split(':').collect();
+            if product_fields.len() != 2 {
+                return Err(OrdersParserError::CannotParseLine(
+                    "[OrdersParserError] Cannot parse a product".to_string(),
+                ));
+            }
+
+            let name = product_fields[0].to_string();
+            let quantity = product_fields[1]
+                .parse::<u32>()
+                .map_err(|err| OrdersParserError::CannotParseLine(err.to_string()))?;
+
+            products.push(Product::new(name, quantity));
         }
 
-        let name = product_fields[0].to_string();
-        let quantity = product_fields[1]
-            .parse::<u32>()
-            .map_err(|err| OrdersParserError::CannotParseLine(err.to_string()))?;
-
-        products.push(Product::new(name, quantity));
+        Ok(Order::new(products))
     }
-
-    Ok(Order { products })
 }
 
 #[cfg(test)]
@@ -113,13 +98,10 @@ mod tests_orders_parser {
         let path = "./files/test_orders_parser/test_orders_parser_one_order_one_product.txt ";
         let parser = OrdersParser::new(path)?;
 
+        let order_1_products = vec![Product::new("Product1".to_string(), 1)];
+
         let read_orders = parser.get_orders();
-        let expected_orders: Vec<Order> = vec![Order {
-            products: vec![Product {
-                name: "Product1".to_string(),
-                quantity: 1,
-            }],
-        }];
+        let expected_orders: Vec<Order> = vec![Order::new(order_1_products)];
 
         assert_eq!(read_orders, expected_orders);
         Ok(())
@@ -131,23 +113,14 @@ mod tests_orders_parser {
         let path = "./files/test_orders_parser/test_orders_parser_one_order_multiple_products.txt ";
         let parser = OrdersParser::new(path)?;
 
+        let order_1_products = vec![
+            Product::new("Product1".to_string(), 1),
+            Product::new("Product2".to_string(), 2),
+            Product::new("Product3".to_string(), 3),
+        ];
+
         let read_orders = parser.get_orders();
-        let expected_orders: Vec<Order> = vec![Order {
-            products: vec![
-                Product {
-                    name: "Product1".to_string(),
-                    quantity: 1,
-                },
-                Product {
-                    name: "Product2".to_string(),
-                    quantity: 2,
-                },
-                Product {
-                    name: "Product3".to_string(),
-                    quantity: 3,
-                },
-            ],
-        }];
+        let expected_orders: Vec<Order> = vec![Order::new(order_1_products)];
 
         assert_eq!(read_orders, expected_orders);
         Ok(())
@@ -160,42 +133,22 @@ mod tests_orders_parser {
             "./files/test_orders_parser/test_orders_parser_multiple_orders_multiple_products.txt ";
         let parser = OrdersParser::new(path)?;
 
+        let order_1_products = vec![
+            Product::new("Product1".to_string(), 1),
+            Product::new("Product2".to_string(), 2),
+            Product::new("Product3".to_string(), 3),
+        ];
+        let order_2_products = vec![
+            Product::new("Product1".to_string(), 1),
+            Product::new("Product2".to_string(), 2),
+        ];
+        let order_3_products = vec![Product::new("Product1".to_string(), 1)];
+
         let read_orders = parser.get_orders();
         let expected_orders: Vec<Order> = vec![
-            Order {
-                products: vec![
-                    Product {
-                        name: "Product1".to_string(),
-                        quantity: 1,
-                    },
-                    Product {
-                        name: "Product2".to_string(),
-                        quantity: 2,
-                    },
-                    Product {
-                        name: "Product3".to_string(),
-                        quantity: 3,
-                    },
-                ],
-            },
-            Order {
-                products: vec![
-                    Product {
-                        name: "Product1".to_string(),
-                        quantity: 1,
-                    },
-                    Product {
-                        name: "Product2".to_string(),
-                        quantity: 2,
-                    },
-                ],
-            },
-            Order {
-                products: vec![Product {
-                    name: "Product1".to_string(),
-                    quantity: 1,
-                }],
-            },
+            Order::new(order_1_products),
+            Order::new(order_2_products),
+            Order::new(order_3_products),
         ];
 
         assert_eq!(read_orders, expected_orders);
