@@ -38,10 +38,10 @@ impl StockParser {
     }
 
     fn parse_line(line: String) -> Result<Product, StockParserError> {
-        let product_fields: Vec<&str> = str_product.split(':').collect();
+        let product_fields: Vec<&str> = line.split(':').collect();
         if product_fields.len() != 2 {
             return Err(StockParserError::CannotParseLine(
-                "[StockParserError] Cannot parse a product".to_string(),
+                "[StockParserError] Cannot parse a product.".to_string(),
             ));
         }
 
@@ -55,7 +55,7 @@ impl StockParser {
 }
 
 #[cfg(test)]
-mod tests_products_parser {
+mod tests_stock_parser {
 
     use super::*;
 
@@ -86,77 +86,43 @@ mod tests_products_parser {
     }
 
     #[test]
-    fn test03_stock_parser_can_read_a_file_with_one_order_and_one_product_ok(
-    ) -> Result<(), StockParserError> {
-        let path = "./files/test_stock_parser/test_stock_parser_one_order_one_product.txt ";
+    fn test03_stock_parser_can_read_a_file_with_one_product_ok() -> Result<(), StockParserError> {
+        let path = "./files/test_stock_parser/test_stock_parser_one_product.txt ";
         let parser = StockParser::new(path)?;
 
-        let order_1_products = vec![Product::new("Product1".to_string(), 1)];
-
         let read_stock = parser.get_products();
-        let expected_stock: Vec<Product> = vec![Product::new(order_1_products)];
+        let expected_products = vec![Product::new("Product1".to_string(), 1)];
 
-        assert_eq!(read_stock, expected_stock);
+        assert_eq!(read_stock, expected_products);
         Ok(())
     }
 
     #[test]
-    fn test04_stock_parser_can_read_a_file_with_one_order_and_multiple_products_ok(
+    fn test04_stock_parser_can_read_a_file_with_multiple_products_ok(
     ) -> Result<(), StockParserError> {
-        let path = "./files/test_stock_parser/test_stock_parser_one_order_multiple_products.txt ";
+        let path = "./files/test_stock_parser/test_stock_parser_multiple_products.txt ";
         let parser = StockParser::new(path)?;
 
-        let order_1_products = vec![
+        let expected_products = vec![
             Product::new("Product1".to_string(), 1),
             Product::new("Product2".to_string(), 2),
             Product::new("Product3".to_string(), 3),
         ];
-
         let read_stock = parser.get_products();
-        let expected_stock: Vec<Product> = vec![Product::new(order_1_products)];
 
-        assert_eq!(read_stock, expected_stock);
+        assert_eq!(read_stock, expected_products);
         Ok(())
     }
 
     #[test]
-    fn test05_stock_parser_can_read_a_file_with_multiple_stock_and_multiple_products_ok(
-    ) -> Result<(), StockParserError> {
-        let path =
-            "./files/test_stock_parser/test_stock_parser_multiple_stock_multiple_products.txt ";
-        let parser = StockParser::new(path)?;
-
-        let order_1_products = vec![
-            Product::new("Product1".to_string(), 1),
-            Product::new("Product2".to_string(), 2),
-            Product::new("Product3".to_string(), 3),
-        ];
-        let order_2_products = vec![
-            Product::new("Product1".to_string(), 1),
-            Product::new("Product2".to_string(), 2),
-        ];
-        let order_3_products = vec![Product::new("Product1".to_string(), 1)];
-
-        let read_stock = parser.get_products();
-        let expected_stock: Vec<Product> = vec![
-            Product::new(order_1_products),
-            Product::new(order_2_products),
-            Product::new(order_3_products),
-        ];
-
-        assert_eq!(read_stock, expected_stock);
-        Ok(())
-    }
-
-    #[test]
-    fn test06_cannot_parse_a_product_bad_file_err() -> Result<(), StockParserError> {
+    fn test05_cannot_parse_a_product_bad_file_err() -> Result<(), StockParserError> {
         let path = "./files/test_stock_parser/test_stock_parser_bad_product.txt ";
         let parser = StockParser::new(path);
 
         assert_eq!(
             parser,
             Err(StockParserError::CannotParseLine(
-                "[StockParserError] Cannot parse a product".to_string()
+                "[StockParserError] Cannot parse a product.".to_string()
             ))
         );
 
