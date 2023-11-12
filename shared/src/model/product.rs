@@ -16,4 +16,8 @@ impl Product {
     pub fn get_quantity(&self) -> u32 {
         self.quantity
     }
+
+    pub fn set_quantity(&mut self, quantity: u32) {
+        self.quantity = quantity;
+    }
 }
