@@ -50,7 +50,7 @@ pub fn run() -> Result<(), ShopError> {
     let orders_path = parse_args()?;
     info!("Starting local shop");
 
-    input_handler::start();
+    // input_handler::start();
     clients_handler::start(&orders_path)
         .map_err(|err| ShopError::InternalError(err.to_string()))?;
 

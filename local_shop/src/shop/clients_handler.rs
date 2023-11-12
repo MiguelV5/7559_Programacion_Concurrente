@@ -1,7 +1,9 @@
 use std::error::Error;
 
-use super::{connected_client, stock_client};
-use super::{constants::DEFAULT_STOCK_FILEPATH, local_client};
+// use super::connected_actor::connected_actor::LocalActor;
+use super::stock_handler::StockActor;
+use super::{constants::DEFAULT_STOCK_FILEPATH, order_puller::OrderPullerActor};
+use actix::Actor;
 use shared::parsers::{local_stock_parser::StockParser, orders_parser::OrdersParser};
 
 pub fn start(orders_file_path: &str) -> Result<(), Box<dyn Error>> {
@@ -18,9 +20,9 @@ pub fn start(orders_file_path: &str) -> Result<(), Box<dyn Error>> {
         DEFAULT_STOCK_FILEPATH
     ))?;
 
-    let stock_client_addr = stock_client::start(initial_stock.get_products());
-    let local_client_addr = local_client::start(orders, stock_client_addr);
-    let connected_client_addr = connected_client::start(stock_client_addr);
+    let stock_addr = StockActor::new(initial_stock.get_products()).start();
+    let local_addr = OrderPullerActor::new(stock_addr).start();
+    // let connected_client_addr = connected_client::start(stock_client_addr);
 
     Ok(())
 }

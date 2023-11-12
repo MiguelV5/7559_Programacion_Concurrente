@@ -47,7 +47,3 @@ impl Handler<UpdateStock> for StockActor {
         Ok(())
     }
 }
-
-pub fn start(stock: Vec<Product>) -> Addr<StockActor> {
-    StockActor::new(stock).start()
-}

@@ -1,18 +1,19 @@
-use crate::shop::stock_client::stock_actor::StockActor;
+use crate::shop::stock_handler::StockActor;
 use actix::prelude::*;
 
 #[derive(Debug)]
-pub struct LocalActor {
+pub struct OrderPullerActor {
+    stock_addr: Addr<StockActor>,
     // TODO: Implementar
 }
 
-impl Actor for LocalActor {
+impl Actor for OrderPullerActor {
     type Context = Context<Self>;
 }
 
-impl LocalActor {
-    fn new() -> Self {
-        Self {}
+impl OrderPullerActor {
+    pub fn new(stock_addr: Addr<StockActor>) -> Self {
+        Self { stock_addr }
     }
 }
 
@@ -27,7 +28,3 @@ impl LocalActor {
 //      //...
 //     }
 // }
-
-pub fn start(stock_actor_addr: Addr<StockActor>) -> Addr<LocalActor> {
-    LocalActor::new().start()
-}
