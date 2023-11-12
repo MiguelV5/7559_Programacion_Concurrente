@@ -1,13 +1,22 @@
 //struct and logic for store pending deliveries in memmory
 
-use std::{sync::{Arc, RwLock}, collections::HashMap};
 use shared::model::product_to_delivery::ProductToDelivery;
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct PendingDeliveries {
     //deliveries is a hashmap with key: order_id and value: order
     deliveries: Arc<RwLock<HashMap<i32, ProductToDelivery>>>,
+}
+
+impl Default for PendingDeliveries {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[allow(dead_code)]

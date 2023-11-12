@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::product_to_delivery::ProductToDelivery;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DatabaseRequest {
@@ -9,7 +9,11 @@ pub struct DatabaseRequest {
 }
 
 impl DatabaseRequest {
-    pub fn new(request_category: RequestCategory, request_type: RequestType, body: DatabaseMessageBody) -> Self {
+    pub fn new(
+        request_category: RequestCategory,
+        request_type: RequestType,
+        body: DatabaseMessageBody,
+    ) -> Self {
         DatabaseRequest {
             request_category,
             request_type,
@@ -22,8 +26,7 @@ impl DatabaseRequest {
 pub enum DatabaseMessageBody {
     OrderId(i32),
     ProductsToDelivery(Vec<ProductToDelivery>),
-    None
-    //TODO: stocks
+    None, //TODO: stocks
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -31,7 +34,6 @@ pub enum RequestCategory {
     ProductStock,
     PendingDelivery,
 }
-
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum RequestType {
