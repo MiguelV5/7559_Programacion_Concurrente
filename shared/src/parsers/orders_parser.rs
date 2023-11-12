@@ -2,6 +2,8 @@ use crate::model::order::Order;
 use crate::model::product::Product;
 
 use std::{
+    error::Error,
+    fmt,
     fs::File,
     io::{BufRead, BufReader},
 };
@@ -12,6 +14,14 @@ pub enum OrdersParserError {
     CannotReadLine(String),
     CannotParseLine(String),
 }
+
+impl fmt::Display for OrdersParserError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "\n    {:#?}\n", self)
+    }
+}
+
+impl Error for OrdersParserError {}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct OrdersParser {

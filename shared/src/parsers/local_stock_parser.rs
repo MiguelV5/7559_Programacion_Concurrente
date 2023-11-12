@@ -1,6 +1,8 @@
 use crate::model::product::Product;
 
 use std::{
+    error::Error,
+    fmt,
     fs::File,
     io::{BufRead, BufReader},
 };
@@ -16,6 +18,14 @@ pub enum StockParserError {
 pub struct StockParser {
     products: Vec<Product>,
 }
+
+impl fmt::Display for StockParserError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "\n    {:#?}\n", self)
+    }
+}
+
+impl Error for StockParserError {}
 
 impl StockParser {
     pub fn new(path: &str) -> Result<Self, StockParserError> {
