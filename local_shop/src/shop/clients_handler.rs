@@ -4,7 +4,7 @@ use std::error::Error;
 use super::stock_handler::StockActor;
 use super::{constants::DEFAULT_STOCK_FILEPATH, order_puller::OrderPullerActor};
 use actix::Actor;
-use shared::parsers::{local_stock_parser::StockParser, orders_parser::OrdersParser};
+use shared::parsers::{orders_parser::OrdersParser, stock_parser::StockParser};
 
 pub fn start(orders_file_path: &str) -> Result<(), Box<dyn Error>> {
     let orders = OrdersParser::new(&format!(

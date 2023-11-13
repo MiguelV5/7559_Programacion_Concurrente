@@ -1,5 +1,5 @@
 use crate::model::order::Order;
-use crate::model::product::Product;
+use crate::model::stock_product::Product;
 
 use std::{
     error::Error,
