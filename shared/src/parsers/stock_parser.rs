@@ -98,11 +98,7 @@ mod tests_stock_parser {
 
     #[test]
     fn test03_stock_parser_can_read_a_file_with_one_product_ok() -> Result<(), StockParserError> {
-<<<<<<< HEAD:shared/src/parsers/stock_parser.rs
         let path = "./data/test_stock_parser/test_stock_parser_one_product.txt ";
-=======
-        let path = "./files/test_stock_parser/test_stock_parser_one_product.txt";
->>>>>>> main:shared/src/parsers/local_stock_parser.rs
         let parser = StockParser::new(path)?;
 
         let read_stock = parser.get_products();
@@ -118,11 +114,7 @@ mod tests_stock_parser {
     #[test]
     fn test04_stock_parser_can_read_a_file_with_multiple_products_ok(
     ) -> Result<(), StockParserError> {
-<<<<<<< HEAD:shared/src/parsers/stock_parser.rs
         let path = "./data/test_stock_parser/test_stock_parser_multiple_products.txt ";
-=======
-        let path = "./files/test_stock_parser/test_stock_parser_multiple_products.txt";
->>>>>>> main:shared/src/parsers/local_stock_parser.rs
         let parser = StockParser::new(path)?;
 
         let read_stock = parser.get_products();
@@ -147,11 +139,7 @@ mod tests_stock_parser {
 
     #[test]
     fn test05_cannot_parse_a_product_bad_file_err() -> Result<(), StockParserError> {
-<<<<<<< HEAD:shared/src/parsers/stock_parser.rs
         let path = "./data/test_stock_parser/test_stock_parser_bad_product.txt ";
-=======
-        let path = "./files/test_stock_parser/test_stock_parser_bad_product.txt";
->>>>>>> main:shared/src/parsers/local_stock_parser.rs
         let parser = StockParser::new(path);
 
         assert_eq!(
