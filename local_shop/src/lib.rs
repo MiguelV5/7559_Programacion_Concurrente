@@ -5,7 +5,7 @@ pub mod shop;
 
 use std::{error::Error, fmt};
 
-use shop::{clients_handler, constants::DEFAULT_ORDERS_FILEPATH, input_handler};
+use shop::{clients_handler, constants::DEFAULT_ORDERS_FILEPATH};
 use tracing::{error, info};
 
 #[derive(Debug)]

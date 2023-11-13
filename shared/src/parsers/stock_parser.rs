@@ -5,7 +5,6 @@ use std::{
     error::Error,
     fmt,
     fs::File,
-    hash::Hash,
     io::{BufRead, BufReader},
 };
 
