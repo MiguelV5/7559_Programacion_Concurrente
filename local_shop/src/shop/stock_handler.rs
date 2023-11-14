@@ -7,6 +7,7 @@ use shared::model::stock_product::Product;
 
 use super::order_puller::AnswerProduct;
 
+#[allow(dead_code)] //Borrar
 #[derive(Debug)]
 pub struct StockActor {
     stock: HashMap<String, Product>,
@@ -16,6 +17,7 @@ impl Actor for StockActor {
     type Context = Context<Self>;
 }
 
+#[allow(dead_code)] //Borrar
 impl StockActor {
     pub fn new(stock: HashMap<String, Product>) -> Self {
         Self { stock }

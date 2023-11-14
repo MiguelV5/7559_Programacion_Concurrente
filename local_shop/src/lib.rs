@@ -34,14 +34,14 @@ fn parse_args() -> Result<String, ShopError> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() == 1 {
         info!("No orders file path was given, using default");
-        return Ok(String::from(DEFAULT_ORDERS_FILEPATH));
+        Ok(String::from(DEFAULT_ORDERS_FILEPATH))
     } else if args.len() == 2 {
-        return Ok(args[1].clone());
+        Ok(args[1].clone())
     } else {
         error!("Too many arguments were given\n Usage: cargo run -p local_shop -- [<orders_file_path>]");
-        return Err(ShopError::ArgsParsingError(String::from(
+        Err(ShopError::ArgsParsingError(String::from(
             "Too many arguments",
-        )));
+        )))
     }
 }
 
