@@ -1,4 +1,4 @@
-use super::product::Product;
+use super::stock_product::Product;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Order {

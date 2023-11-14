@@ -51,7 +51,7 @@ impl PendingDeliveries {
 #[cfg(test)]
 mod tests_pending_deliveries {
     use super::*;
-    use shared::model::product::Product;
+    use shared::model::stock_product::Product;
 
     #[test]
     fn test01_add_delivery() {

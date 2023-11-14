@@ -1,7 +1,9 @@
 use crate::model::order::Order;
-use crate::model::product::Product;
+use crate::model::stock_product::Product;
 
 use std::{
+    error::Error,
+    fmt,
     fs::File,
     io::{BufRead, BufReader},
 };
@@ -12,6 +14,14 @@ pub enum OrdersParserError {
     CannotReadLine(String),
     CannotParseLine(String),
 }
+
+impl fmt::Display for OrdersParserError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "\n    {:#?}\n", self)
+    }
+}
+
+impl Error for OrdersParserError {}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct OrdersParser {
@@ -68,7 +78,7 @@ mod tests_orders_parser {
 
     #[test]
     fn test01_bad_path_err() -> Result<(), OrdersParserError> {
-        let path = "./files/test_orders_parser/test_bad_path.csv";
+        let path = "./data/test_orders_parser/test_bad_path.csv";
         let parser = OrdersParser::new(path);
 
         assert_eq!(
@@ -82,7 +92,7 @@ mod tests_orders_parser {
 
     #[test]
     fn test02_orders_parser_can_read_file_with_no_lines_ok() -> Result<(), OrdersParserError> {
-        let path = "./files/test_orders_parser/test_orders_parser_no_lines.txt";
+        let path = "./data/test_orders_parser/test_orders_parser_no_lines.txt";
         let parser = OrdersParser::new(path)?;
 
         let read_orders = parser.get_orders();
@@ -95,7 +105,7 @@ mod tests_orders_parser {
     #[test]
     fn test03_orders_parser_can_read_a_file_with_one_order_and_one_product_ok(
     ) -> Result<(), OrdersParserError> {
-        let path = "./files/test_orders_parser/test_orders_parser_one_order_one_product.txt";
+        let path = "./data/test_orders_parser/test_orders_parser_one_order_one_product.txt";
         let parser = OrdersParser::new(path)?;
 
         let order_1_products = vec![Product::new("Product1".to_string(), 1)];
@@ -110,7 +120,7 @@ mod tests_orders_parser {
     #[test]
     fn test04_orders_parser_can_read_a_file_with_one_order_and_multiple_products_ok(
     ) -> Result<(), OrdersParserError> {
-        let path = "./files/test_orders_parser/test_orders_parser_one_order_multiple_products.txt";
+        let path = "./data/test_orders_parser/test_orders_parser_one_order_multiple_products.txt";
         let parser = OrdersParser::new(path)?;
 
         let order_1_products = vec![
@@ -130,7 +140,7 @@ mod tests_orders_parser {
     fn test05_orders_parser_can_read_a_file_with_multiple_orders_and_multiple_products_ok(
     ) -> Result<(), OrdersParserError> {
         let path =
-            "./files/test_orders_parser/test_orders_parser_multiple_orders_multiple_products.txt";
+            "./data/test_orders_parser/test_orders_parser_multiple_orders_multiple_products.txt";
         let parser = OrdersParser::new(path)?;
 
         let order_1_products = vec![
@@ -157,7 +167,7 @@ mod tests_orders_parser {
 
     #[test]
     fn test06_cannot_parse_a_product_bad_file_err() -> Result<(), OrdersParserError> {
-        let path = "./files/test_orders_parser/test_orders_parser_bad_product.txt";
+        let path = "./data/test_orders_parser/test_orders_parser_bad_product.txt";
         let parser = OrdersParser::new(path);
 
         assert_eq!(

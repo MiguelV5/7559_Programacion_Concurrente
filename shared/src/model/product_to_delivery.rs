@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::product::Product;
+use super::stock_product::Product;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProductToDelivery {
