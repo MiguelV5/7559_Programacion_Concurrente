@@ -35,7 +35,22 @@ impl Handler<AskForProduct> for StockActor {
     type Result = ();
 
     fn handle(&mut self, msg: AskForProduct, _ctx: &mut Context<Self>) -> Self::Result {
-        let _ = msg.recipient.try_send(AnswerProduct::StockNoProduct);
+        let requested_product_name = msg.product.get_name().clone();
+        let requested_product_quantity = msg.product.get_quantity();
+
+        if let Some(product) = self.stock.get_mut(&msg.product.get_name()) {
+            if product.get_quantity() >= requested_product_quantity {
+                let requested_product =
+                    Product::new(requested_product_name, requested_product_quantity);
+                product.affect_quantity_with_value(-msg.product.get_quantity());
+                msg.recipient.try_send(AnswerProduct::StockGaveProduct {
+                    product: requested_product,
+                });
+                return;
+            }
+        }
+
+        msg.recipient.try_send(AnswerProduct::StockNoProduct);
     }
 }
 
@@ -64,27 +79,33 @@ mod tests_stock_handler {
 
     use super::*;
 
-    use std::{collections::HashMap, error::Error};
+    use std::{any::Any, collections::HashMap, error::Error};
 
     use actix::actors::mocker::Mocker;
+    use futures_channel::oneshot::Sender;
     use shared::model::stock_product::Product;
 
-    fn generate_stock(size: usize) -> HashMap<String, Product> {
+    fn generate_stock(size: i32) -> HashMap<String, Product> {
         let mut stock = HashMap::new();
         for i in 0..size {
-            let product = Product::new(format!("Product{}", i), i as u32);
+            let product = Product::new(format!("Product{}", i), i);
             stock.insert(product.get_name(), product);
         }
         stock
     }
 
-    #[actix_rt::test]
-    async fn test01_order_puller_asking_for_product_but_stock_has_no_product_ok(
-    ) -> Result<(), Box<dyn Error>> {
-        let (tx, rx) = futures_channel::oneshot::channel();
-        let mut tx_once = Some(tx);
+    // OrderPuller StockHandler
+    // se inicializa al OrderPuller con una orden para comprar Product1
+    // OrderPuller -> StockHandler has_product(Product1)
+    // ...
+    // StockHandler -> OrderPuller take_product(Product1)
+    // OrderPuller -> OrderPusher finish_order(Order1)
+    // ...
+    // OrderPusher -> OrderPuller new_order(Order2)
 
-        let recipient = Mocker::<AnswerProduct>::mock(Box::new(move |msg, _ctx| {
+    fn create_order_puller_recipient(tx: Sender<Box<dyn Any>>) -> Recipient<AnswerProduct> {
+        let mut tx_once: Option<futures_channel::oneshot::Sender<Box<dyn Any>>> = Some(tx);
+        Mocker::<AnswerProduct>::mock(Box::new(move |msg, _ctx| {
             let _ = tx_once
                 .take()
                 .expect("Should be called just once")
@@ -92,14 +113,23 @@ mod tests_stock_handler {
             Box::new(Some(()))
         }))
         .start()
-        .recipient();
+        .recipient()
+    }
+
+    #[actix_rt::test]
+    async fn test01_order_puller_asking_for_product_but_stock_has_no_product_ok(
+    ) -> Result<(), Box<dyn Error>> {
+        let (tx, rx) = futures_channel::oneshot::channel();
+        let recipient = create_order_puller_recipient(tx);
 
         let stock = generate_stock(0);
         let stock_parser = StockActor::new(stock).start();
 
+        let asked_product = Product::new("Product1".to_string(), 1);
+
         stock_parser.try_send(AskForProduct {
             recipient,
-            product: Product::new("Product1".to_string(), 1),
+            product: asked_product,
         })?;
 
         let expected_result = AnswerProduct::StockNoProduct;
@@ -110,14 +140,60 @@ mod tests_stock_handler {
         }
 
         Ok(())
+    }
 
-        // OrderPuller StockHandler
-        // se inicializa al OrderPuller con una orden para comprar Product1
-        // OrderPuller -> StockHandler has_product(Product1)
-        // ...
-        // StockHandler -> OrderPuller take_product(Product1)
-        // OrderPuller -> OrderPusher finish_order(Order1)
-        // ...
-        // OrderPusher -> OrderPuller new_order(Order2)
+    #[actix_rt::test]
+    async fn test02_order_puller_asking_for_product_and_stock_does_not_have_that_quantity_ok(
+    ) -> Result<(), Box<dyn Error>> {
+        let (tx, rx) = futures_channel::oneshot::channel();
+        let recipient = create_order_puller_recipient(tx);
+
+        let stock = generate_stock(1);
+        let stock_parser = StockActor::new(stock).start();
+
+        let asked_product = Product::new("Product1".to_string(), 2);
+
+        stock_parser.try_send(AskForProduct {
+            recipient,
+            product: asked_product,
+        })?;
+
+        let expected_result = AnswerProduct::StockNoProduct;
+        if let Some(received_result) = rx.await?.downcast_ref::<AnswerProduct>() {
+            assert_eq!(expected_result, *received_result);
+        } else {
+            panic!("Should be AnswerProduct");
+        }
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn test03_order_puller_asking_for_product_and_stock_has_that_product_ok(
+    ) -> Result<(), Box<dyn Error>> {
+        let (tx, rx) = futures_channel::oneshot::channel();
+        let recipient = create_order_puller_recipient(tx);
+
+        let stock = generate_stock(1);
+        let stock_parser = StockActor::new(stock).start();
+
+        let asked_product = Product::new("Product1".to_string(), 1);
+
+        stock_parser.try_send(AskForProduct {
+            recipient,
+            product: asked_product.clone(),
+        })?;
+
+        let expected_result = AnswerProduct::StockGaveProduct {
+            product: asked_product,
+        };
+
+        if let Some(received_result) = rx.await?.downcast_ref::<AnswerProduct>() {
+            assert_eq!(expected_result, *received_result);
+        } else {
+            panic!("Should be AnswerProduct");
+        }
+
+        Ok(())
     }
 }

@@ -61,7 +61,7 @@ impl OrdersParser {
 
             let name = product_fields[0].to_string();
             let quantity = product_fields[1]
-                .parse::<u32>()
+                .parse::<i32>()
                 .map_err(|err| OrdersParserError::CannotParseLine(err.to_string()))?;
 
             products.push(Product::new(name, quantity));

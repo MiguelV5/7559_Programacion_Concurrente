@@ -23,10 +23,7 @@ impl OrderPullerActor {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "()")]
 pub enum AnswerProduct {
-    StockGaveProduct {
-        recipient: Addr<StockActor>,
-        product: Product,
-    },
+    StockGaveProduct { product: Product },
     StockNoProduct,
 }
 

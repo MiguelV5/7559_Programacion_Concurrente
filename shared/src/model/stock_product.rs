@@ -1,13 +1,17 @@
 use serde::{Deserialize, Serialize};
 
+pub enum ProductError {
+    NegativeQuantity,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Product {
     name: String,
-    quantity: u32,
+    quantity: i32,
 }
 
 impl Product {
-    pub fn new(name: String, quantity: u32) -> Self {
+    pub fn new(name: String, quantity: i32) -> Self {
         Product { name, quantity }
     }
 
@@ -15,11 +19,15 @@ impl Product {
         self.name.clone()
     }
 
-    pub fn get_quantity(&self) -> u32 {
+    pub fn get_quantity(&self) -> i32 {
         self.quantity
     }
 
-    pub fn set_quantity(&mut self, quantity: u32) {
-        self.quantity = quantity;
+    pub fn affect_quantity_with_value(&mut self, value: i32) -> Result<(), ProductError> {
+        if self.quantity + value < 0 {
+            return Err(ProductError::NegativeQuantity);
+        }
+        self.quantity = self.quantity + value;
+        Ok(())
     }
 }

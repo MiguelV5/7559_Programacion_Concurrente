@@ -58,7 +58,7 @@ impl StockParser {
 
         let name = product_fields[0].to_string();
         let quantity = product_fields[1]
-            .parse::<u32>()
+            .parse::<i32>()
             .map_err(|err| StockParserError::CannotParseLine(err.to_string()))?;
 
         Ok((name.clone(), Product::new(name, quantity)))
