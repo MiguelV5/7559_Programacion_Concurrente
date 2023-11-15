@@ -5,6 +5,10 @@ use actix::prelude::*;
 use tracing::info;
 
 pub fn setup_input_listener() -> std::thread::JoinHandle<()> {
+    // para el cerrado de conexion en local_shop se puede hacer lo mismo pero
+    // pasandole a esta funcion un channel, de tal forma que dentro del else if CC
+    // se espere a obtener la addr del actor correspondiente y ya con eso se le
+    // puede mandar el mensaje de cerrar conexion
     std::thread::spawn(|| {
         info!("Input listener thread started");
         let stdin = std::io::stdin();
