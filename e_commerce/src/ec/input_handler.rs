@@ -1,7 +1,7 @@
-use std::io::{BufRead, BufReader};
-
 use super::constants::EXIT_MSG;
 use actix::prelude::*;
+use tokio::io::stdin;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::task::JoinHandle;
 use tracing::info;
 
@@ -12,12 +12,12 @@ pub fn setup_input_listener() -> JoinHandle<()> {
     // puede mandar el mensaje de cerrar conexion
     actix::spawn(async {
         info!("Input listener thread started");
-        let stdin = std::io::stdin();
-        let reader = BufReader::new(stdin);
-        for line in reader.lines() {
-            let line = line.unwrap();
+        let stdin = stdin();
+        let mut reader = BufReader::new(stdin).lines();
+
+        while let Some(line) = reader.next_line().await.unwrap() {
             if line == EXIT_MSG {
-                info!("Exiting...");
+                info!("Exit command received");
                 match System::try_current() {
                     Some(system) => system.stop(),
                     None => info!("No actix system running"),
