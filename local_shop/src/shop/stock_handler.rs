@@ -7,7 +7,6 @@ use shared::model::stock_product::Product;
 
 use super::order_puller::AnswerProduct;
 
-#[allow(dead_code)] //Borrar
 #[derive(Debug)]
 pub struct StockActor {
     stock: HashMap<String, Product>,
@@ -17,7 +16,6 @@ impl Actor for StockActor {
     type Context = Context<Self>;
 }
 
-#[allow(dead_code)] //Borrar
 impl StockActor {
     pub fn new(stock: HashMap<String, Product>) -> Self {
         Self { stock }
@@ -25,54 +23,40 @@ impl StockActor {
 }
 
 #[derive(Message)]
-#[rtype(result = "()")]
+#[rtype(result = "Result<(), String>")]
 pub struct AskForProduct {
     pub recipient: Recipient<AnswerProduct>,
     pub product: Product,
 }
 
 impl Handler<AskForProduct> for StockActor {
-    type Result = ();
+    type Result = Result<(), String>;
 
     fn handle(&mut self, msg: AskForProduct, _ctx: &mut Context<Self>) -> Self::Result {
         let requested_product_name = msg.product.get_name().clone();
         let requested_product_quantity = msg.product.get_quantity();
 
-        if let Some(product) = self.stock.get_mut(&msg.product.get_name()) {
+        if let Some(product) = self.stock.get_mut(&requested_product_name) {
             if product.get_quantity() >= requested_product_quantity {
                 let requested_product =
                     Product::new(requested_product_name, requested_product_quantity);
-                product.affect_quantity_with_value(-msg.product.get_quantity());
-                msg.recipient.try_send(AnswerProduct::StockGaveProduct {
-                    product: requested_product,
-                });
-                return;
+                product
+                    .affect_quantity_with_value(-msg.product.get_quantity())
+                    .map_err(|err| err.to_string())?;
+                msg.recipient
+                    .try_send(AnswerProduct::StockGaveProduct {
+                        product: requested_product,
+                    })
+                    .map_err(|err| err.to_string())?;
+                return Ok(());
             }
         }
 
-        msg.recipient.try_send(AnswerProduct::StockNoProduct);
+        msg.recipient
+            .try_send(AnswerProduct::StockNoProduct)
+            .map_err(|err| err.to_string())
     }
 }
-
-// #[derive(Message)]
-// #[rtype(result = "Result<(), String>")]
-// pub struct UpdateStock(Vec<Product>);
-
-// impl Handler<UpdateStock> for StockActor {
-//     type Result = Result<(), String>;
-
-//     fn handle(&mut self, _: UpdateStock, _ctx: &mut Context<Self>) -> Self::Result {
-//         // let products_to_update = msg.0;
-//         // for product in products_to_update {
-//         //     for stock_product in self.stock.iter_mut() {
-//         //         if product.get_name() == stock_product.get_name() {
-//         //             stock_product.set_quantity(product.get_quantity());
-//         //         }
-//         //     }
-//         // }
-//         Ok(())
-//     }
-// }
 
 #[cfg(test)]
 mod tests_stock_handler {
@@ -87,7 +71,7 @@ mod tests_stock_handler {
 
     fn generate_stock(size: i32) -> HashMap<String, Product> {
         let mut stock = HashMap::new();
-        for i in 0..size {
+        for i in 1..size + 1 {
             let product = Product::new(format!("Product{}", i), i);
             stock.insert(product.get_name(), product);
         }

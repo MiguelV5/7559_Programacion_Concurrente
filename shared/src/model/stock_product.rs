@@ -1,8 +1,19 @@
+use std::{error::Error, fmt};
+
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum ProductError {
     NegativeQuantity,
 }
+
+impl fmt::Display for ProductError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "\n    {:#?}\n", self)
+    }
+}
+
+impl Error for ProductError {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Product {
