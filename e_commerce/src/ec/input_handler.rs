@@ -15,7 +15,7 @@ pub fn setup_input_listener() -> JoinHandle<()> {
         let stdin = stdin();
         let mut reader = BufReader::new(stdin).lines();
 
-        while let Some(line) = reader.next_line().await.unwrap() {
+        while let Ok(Some(line)) = reader.next_line().await {
             if line == EXIT_MSG {
                 info!("Exit command received");
                 match System::try_current() {
