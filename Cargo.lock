@@ -157,10 +157,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "e-commerce"
+name = "e_commerce"
 version = "0.1.0"
 dependencies = [
+ "actix",
+ "actix-rt",
+ "futures-channel",
  "shared",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
