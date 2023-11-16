@@ -34,11 +34,11 @@ impl Product {
         self.quantity
     }
 
-    pub fn affect_quantity_with_value(&mut self, value: i32) -> Result<(), ProductError> {
+    pub fn affect_quantity_with_value(&mut self, value: i32) {
         if self.quantity + value < 0 {
-            return Err(ProductError::NegativeQuantity);
+            self.quantity = 0;
+            return;
         }
         self.quantity = self.quantity + value;
-        Ok(())
     }
 }
