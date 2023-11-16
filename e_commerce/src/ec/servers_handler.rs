@@ -1,33 +1,33 @@
 use actix::prelude::*;
+use shared::parsers::orders_parser::OrdersParser;
 use std::error::Error;
 
 use super::{
     input_handler, order_pusher::OrderPusherActor, sl_communicator::SLMiddlemanActor,
-    ss_communicator::SsMiddlemanActor,
+    ss_communicator::SSMiddlemanActor,
 };
 
-pub fn start(_orders: &str) -> Result<(), Box<dyn Error>> {
-    // let orders = OrdersParser::new(&format!(
-    //     "{}/{}",
-    //     env!("CARGO_MANIFEST_DIR"),
-    //     orders_file_path
-    // ))?
-    // .get_orders();
-
+pub fn start(orders_file_path: &str) -> Result<(), Box<dyn Error>> {
     // let stop_handle = input_handler::setup_input_listener();
+    let orders;
+    if let Ok(orders_parser) = OrdersParser::new(&format!(
+        "{}/{}",
+        env!("CARGO_MANIFEST_DIR"),
+        orders_file_path
+    )) {
+        orders = orders_parser.get_orders();
+    } else {
+        return Err("[e_commerce] Error parsing orders file".into());
+    }
 
     System::new().block_on(async {
-        let stop_handle = input_handler::setup_input_listener();
+        let sl_middleman = SLMiddlemanActor::new().start();
+        let ss_middleman = SSMiddlemanActor::new().start();
+        let order_pusher = OrderPusherActor::new(&orders, sl_middleman, ss_middleman).start();
 
-        let ss_middleman = SyncArbiter::start(1, SLMiddlemanActor::new);
-        let ss_middleman = SyncArbiter::start(1, SsMiddlemanActor::new);
-        let order_pusher = SyncArbiter::start(1, OrderPusherActor::new);
+        let stop_handle = input_handler::setup_input_listener(order_pusher);
         let _ = stop_handle.await;
     });
-
-    // stop_handle
-    //     .join()
-    //     .map_err(|_| "[e_commerce] Error joining input listener thread")?;
 
     Ok(())
 }

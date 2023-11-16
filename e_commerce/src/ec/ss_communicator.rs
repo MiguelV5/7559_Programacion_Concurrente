@@ -1,20 +1,20 @@
-use actix::{Actor, Message, SyncContext};
+use actix::{Actor, Context, Message};
 use tracing::warn;
 
-pub struct SsMiddlemanActor {
+pub struct SSMiddlemanActor {
     // external_ss_addresses: Vec<Addr<SSMiddlemanActor>>,
     // sl_middleman_addr: Addr<SLMiddlemanActor>,
 }
 
-impl Actor for SsMiddlemanActor {
-    type Context = SyncContext<Self>;
+impl Actor for SSMiddlemanActor {
+    type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
-        warn!("SsMiddlemanActor started");
+        warn!("SSMiddlemanActor started");
     }
 }
 
-impl SsMiddlemanActor {
+impl SSMiddlemanActor {
     pub fn new() -> Self {
         Self {
             // external_ss_addresses,
