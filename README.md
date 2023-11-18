@@ -46,11 +46,11 @@ Ambos a su vez proveen comandos para interactuar con el sistema durante la ejecu
     - `exit`: cierra el e-commerce de forma segura.
     - `push`: comienza el procesado de las ordenes recibidas.
     - `list_locals`: lista los locales y su estado actual (conectado/desconectado).
-    - `rc <local_id>`: reestablecer manualmente conexión con el local de id `local_id` (se puede obtener con el comando `list_locals`) (las conexiones se intentan reestablecer automaticamente cada 20 segundos).
 - local_shop:
     - `exit`: cierra el local de forma segura.
     - `push`: comienza el procesado de las ordenes recibidas.
     - `cc`: cierra la conexión con el e-commerce. El proceso sigue activo.
+    - `rc`: reestablece la conexión con el e-commerce (las conexiones se intentan reestablecer automaticamente cada 20 segundos).
 
 ## Tests
 
