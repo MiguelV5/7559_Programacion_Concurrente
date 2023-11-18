@@ -2,12 +2,12 @@ use actix::{Actor, Addr, Context, Handler, Message};
 use shared::model::order::Order;
 use tracing::warn;
 
-use super::{sl_communicator::SLMiddlemanActor, ss_communicator::SSMiddlemanActor};
+use super::{sl_communicator::SLMiddleman, ss_communicator::SSMiddleman};
 
 pub struct OrderPusherActor {
     orders: Vec<Order>,
-    sl_communicator: Addr<SLMiddlemanActor>,
-    ss_communicator: Addr<SSMiddlemanActor>,
+    sl_communicator: Addr<SLMiddleman>,
+    ss_communicator: Addr<SSMiddleman>,
 }
 
 impl Actor for OrderPusherActor {
@@ -21,8 +21,8 @@ impl Actor for OrderPusherActor {
 impl OrderPusherActor {
     pub fn new(
         orders: &[Order],
-        sl_communicator: Addr<SLMiddlemanActor>,
-        ss_communicator: Addr<SSMiddlemanActor>,
+        sl_communicator: Addr<SLMiddleman>,
+        ss_communicator: Addr<SSMiddleman>,
     ) -> Self {
         let orders = orders.to_vec();
         Self {

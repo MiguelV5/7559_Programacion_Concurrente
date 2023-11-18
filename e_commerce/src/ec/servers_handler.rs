@@ -1,14 +1,16 @@
 use actix::prelude::*;
 use shared::parsers::orders_parser::OrdersParser;
 use std::error::Error;
+use tokio::task::JoinHandle;
 
 use super::{
-    input_handler, order_pusher::OrderPusherActor, sl_communicator::SLMiddlemanActor,
-    ss_communicator::SSMiddlemanActor,
+    input_handler,
+    order_pusher::OrderPusherActor,
+    sl_communicator::{self, SLMiddleman},
+    ss_communicator::{self, SSMiddleman},
 };
 
 pub fn start(orders_file_path: &str) -> Result<(), Box<dyn Error>> {
-    // let stop_handle = input_handler::setup_input_listener();
     let orders;
     if let Ok(orders_parser) = OrdersParser::new(&format!(
         "{}/{}",
@@ -21,13 +23,32 @@ pub fn start(orders_file_path: &str) -> Result<(), Box<dyn Error>> {
     }
 
     System::new().block_on(async {
-        let sl_middleman = SLMiddlemanActor::new().start();
-        let ss_middleman = SSMiddlemanActor::new().start();
+        let mut handles = Vec::new();
+
+        let sl_middleman = SLMiddleman::new().start();
+        let ss_middleman = SSMiddleman::new().start();
+
+        // handles.push(ss_communicator::setup_servers_connection());
+        handles.push(sl_communicator::setup_locals_connection(
+            sl_middleman.clone(),
+        ));
         let order_pusher = OrderPusherActor::new(&orders, sl_middleman, ss_middleman).start();
 
-        let stop_handle = input_handler::setup_input_listener(order_pusher);
-        let _ = stop_handle.await;
+        handles.push(input_handler::setup_input_listener(order_pusher));
+
+        await_handles(handles).await;
     });
 
     Ok(())
+}
+
+async fn await_handles(handles: Vec<JoinHandle<()>>) {
+    for handle in handles {
+        match handle.await {
+            Ok(_) => {}
+            Err(e) => {
+                println!("Error in handle: {}", e);
+            }
+        }
+    }
 }

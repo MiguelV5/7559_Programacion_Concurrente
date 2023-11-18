@@ -35,8 +35,8 @@ pub fn setup_input_listener(order_pusher: Addr<OrderPusherActor>) -> JoinHandle<
                 }
             } else {
                 warn!(
-                    "Unknown command: {}.\n\t Available commands: {}, {}.",
-                    line, EXIT_MSG, PUSH_ORDERS_MSG
+                    "Unknown command. Available commands: {}, {}.",
+                    EXIT_MSG, PUSH_ORDERS_MSG
                 );
             }
         }
