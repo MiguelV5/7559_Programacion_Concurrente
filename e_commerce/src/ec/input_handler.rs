@@ -6,7 +6,7 @@ use actix::prelude::*;
 use tokio::io::stdin;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::task::JoinHandle;
-use tracing::info;
+use tracing::{info, warn};
 
 pub fn setup_input_listener(order_pusher: Addr<OrderPusherActor>) -> JoinHandle<()> {
     // para el cerrado de conexion en local_shop se puede hacer lo mismo pero
@@ -34,7 +34,10 @@ pub fn setup_input_listener(order_pusher: Addr<OrderPusherActor>) -> JoinHandle<
                     info!("Error sending PushOrders message");
                 }
             } else {
-                info!("Unknown command: {}", line);
+                warn!(
+                    "Unknown command: {}.\n\t Available commands: {}, {}.",
+                    line, EXIT_MSG, PUSH_ORDERS_MSG
+                );
             }
         }
     })
