@@ -18,7 +18,7 @@ pub enum ShopError {
 
 impl fmt::Display for ShopError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\n    {:#?}\n", self)
+        write!(f, "\n    {:?}\n", self)
     }
 }
 impl Error for ShopError {}
