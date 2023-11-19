@@ -1,10 +1,10 @@
+use super::{input_handler, order_handler::OrderHandler, sl_communicator, ss_communicator};
 use actix::prelude::*;
 use shared::{model::order::Order, parsers::orders_parser::OrdersParser};
 use std::error::Error;
 use std::sync::mpsc::channel;
-use tokio::task::JoinHandle;
-
-use super::{input_handler, order_handler::OrderHandler, sl_communicator, ss_communicator};
+use std::thread::JoinHandle;
+use tracing::error;
 
 pub fn start(orders_file_path: &str) -> Result<(), Box<dyn Error>> {
     let orders = parse_given_orders(orders_file_path)?;
@@ -28,18 +28,18 @@ pub fn start(orders_file_path: &str) -> Result<(), Box<dyn Error>> {
             tx_from_input_to_ss,
         ));
 
-        await_handles(handles).await;
+        join_handles(handles);
     });
 
     Ok(())
 }
 
-async fn await_handles(handles: Vec<JoinHandle<()>>) {
+fn join_handles(handles: Vec<JoinHandle<()>>) {
     for handle in handles {
-        match handle.await {
+        match handle.join() {
             Ok(_) => {}
-            Err(e) => {
-                println!("Error in handle: {}", e);
+            Err(_) => {
+                error!("Error joining thread");
             }
         }
     }
