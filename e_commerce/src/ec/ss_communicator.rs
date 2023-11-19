@@ -11,12 +11,6 @@ impl Actor for SSMiddleman {
     }
 }
 
-impl SSMiddleman {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct LeaderElection {}

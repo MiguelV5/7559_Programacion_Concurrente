@@ -45,7 +45,13 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
 
                 let writer = self.local_shop_write_stream.clone();
                 wrap_future::<_, Self>(async move {
-                    if let Ok(_) = writer.lock().await.write_all(response.as_bytes()).await {
+                    if writer
+                        .lock()
+                        .await
+                        .write_all(response.as_bytes())
+                        .await
+                        .is_ok()
+                    {
                         info!("Respuesta enviada al local shop");
                     } else {
                         error!("Error al escribir en el stream")
@@ -147,9 +153,8 @@ fn handle_connected_local_shop(
                 e
             );
             if let Some(system) = System::try_current() {
-                system.stop()
+                system.stop();
             }
-            return;
         }
     }
 }
@@ -160,13 +165,13 @@ fn is_exit_required(rx_from_input: &mpsc::Receiver<String>) -> bool {
             if msg == EXIT_MSG {
                 info!("Received exit msg from input handler, stopping listener");
                 if let Some(system) = System::try_current() {
-                    system.stop()
+                    system.stop();
                 }
-                return true;
+                true
             } else {
-                return false;
+                false
             }
         }
-        Err(_) => return false,
+        Err(_) => false,
     }
 }
