@@ -3,12 +3,7 @@ use shared::parsers::orders_parser::OrdersParser;
 use std::error::Error;
 use tokio::task::JoinHandle;
 
-use super::{
-    input_handler,
-    order_pusher::OrderPusherActor,
-    sl_communicator::{self, SLMiddleman},
-    ss_communicator::{self, SSMiddleman},
-};
+use super::{input_handler, order_handler::OrderHandler, sl_communicator, ss_communicator};
 
 pub fn start(orders_file_path: &str) -> Result<(), Box<dyn Error>> {
     let orders;
@@ -25,16 +20,16 @@ pub fn start(orders_file_path: &str) -> Result<(), Box<dyn Error>> {
     System::new().block_on(async {
         let mut handles = Vec::new();
 
-        let sl_middleman = SLMiddleman::new().start();
-        let ss_middleman = SSMiddleman::new().start();
+        // let sl_middleman = SLMiddleman::new().start();
+        // let ss_middleman = SSMiddleman::new().start();
 
-        // handles.push(ss_communicator::setup_servers_connection());
+        let order_handler = OrderHandler::new(&orders).start();
         handles.push(sl_communicator::setup_locals_connection(
-            sl_middleman.clone(),
+            order_handler.clone(),
         ));
-        let order_pusher = OrderPusherActor::new(&orders, sl_middleman, ss_middleman).start();
+        // handles.push(ss_communicator::setup_servers_connection());
 
-        handles.push(input_handler::setup_input_listener(order_pusher));
+        handles.push(input_handler::setup_input_listener(order_handler));
 
         await_handles(handles).await;
     });

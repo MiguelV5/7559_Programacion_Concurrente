@@ -1,14 +1,14 @@
 use crate::ec::constants::PUSH_ORDERS_MSG;
 
 use super::constants::EXIT_MSG;
-use super::order_pusher::OrderPusherActor;
+use super::order_handler::OrderHandler;
 use actix::prelude::*;
 use tokio::io::stdin;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
-pub fn setup_input_listener(order_pusher: Addr<OrderPusherActor>) -> JoinHandle<()> {
+pub fn setup_input_listener(order_pusher: Addr<OrderHandler>) -> JoinHandle<()> {
     // para el cerrado de conexion en local_shop se puede hacer lo mismo pero
     // pasandole a esta funcion un channel, de tal forma que dentro del else if CC
     // se espere a obtener la addr del actor correspondiente y ya con eso se le
@@ -28,7 +28,8 @@ pub fn setup_input_listener(order_pusher: Addr<OrderPusherActor>) -> JoinHandle<
                 break;
             } else if line == PUSH_ORDERS_MSG {
                 info!("Push command received");
-                if let Ok(_send_res) = order_pusher.send(super::order_pusher::PushOrders {}).await {
+                if let Ok(_send_res) = order_pusher.send(super::order_handler::PushOrders {}).await
+                {
                     info!("PushOrders message sent successfully");
                 } else {
                     info!("Error sending PushOrders message");
