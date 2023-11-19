@@ -14,6 +14,7 @@ use tokio::{
 use tokio_stream::wrappers::LinesStream;
 use tracing::{error, info, warn};
 
+use crate::ec::constants::EXIT_MSG;
 use crate::ec::{
     constants::{SL_INITIAL_PORT, SL_MAX_PORT},
     order_handler::AddSLMiddlemanAddr,
@@ -39,10 +40,11 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
         match msg {
             Ok(msg) => {
                 info!(" Received msg: {}", msg);
+                let response = msg + "\n";
 
                 let writer = self.local_shop_write_stream.clone();
                 wrap_future::<_, Self>(async move {
-                    if let Ok(_) = writer.lock().await.write_all(msg.as_bytes()).await {
+                    if let Ok(_) = writer.lock().await.write_all(response.as_bytes()).await {
                         info!("Respuesta enviada al local shop");
                     } else {
                         error!("Error al escribir en el stream")
@@ -63,7 +65,10 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
     }
 }
 
-pub fn setup_locals_connection(order_handler: Addr<OrderHandler>) -> JoinHandle<()> {
+pub fn setup_locals_connection(
+    order_handler: Addr<OrderHandler>,
+    mut rx_from_input: tokio::sync::broadcast::Receiver<String>,
+) -> JoinHandle<()> {
     actix::spawn(async move {
         if let Ok((listener, listener_addr)) =
             shared::port_binder::listener_binder::async_try_bind_listener(
@@ -74,9 +79,24 @@ pub fn setup_locals_connection(order_handler: Addr<OrderHandler>) -> JoinHandle<
         {
             info!("Iniciado listener en {}", listener_addr);
             let mut local_shop_id = 1;
-            // TODO: change while into non-blocking accept with a previous check of a channel from the input handler
             loop {
                 // TODO: change while into non-blocking accept with a previous check of a channel from the input handler
+
+                match rx_from_input.try_recv() {
+                    Ok(msg) => {
+                        if msg == EXIT_MSG {
+                            info!("Received exit msg from input_handler, stopping listener");
+                            match System::try_current() {
+                                Some(system) => system.stop(),
+                                None => info!("No actix system running"),
+                            }
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        error!(" Error in received msg from input_handler: {}", e);
+                    }
+                }
 
                 if let Ok((stream, stream_addr)) = listener.accept().await {
                     info!(" [{:?}] Cliente conectado", stream_addr);
@@ -104,7 +124,10 @@ pub fn setup_locals_connection(order_handler: Addr<OrderHandler>) -> JoinHandle<
                         Ok(_) => {}
                         Err(e) => {
                             error!(" Error al enviar AddLocalShopStream: {}", e);
-                            System::current().stop();
+                            match System::try_current() {
+                                Some(system) => system.stop(),
+                                None => info!("No actix system running"),
+                            }
                             return;
                         }
                     }
@@ -112,7 +135,10 @@ pub fn setup_locals_connection(order_handler: Addr<OrderHandler>) -> JoinHandle<
                     local_shop_id += 1;
                 } else {
                     error!(" Error al intentar bindear el puerto");
-                    System::current().stop();
+                    match System::try_current() {
+                        Some(system) => system.stop(),
+                        None => info!("No actix system running"),
+                    }
                 }
             }
         }

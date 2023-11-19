@@ -20,14 +20,15 @@ pub fn start(orders_file_path: &str) -> Result<(), Box<dyn Error>> {
     System::new().block_on(async {
         let mut handles = Vec::new();
 
-        // let sl_middleman = SLMiddleman::new().start();
-        // let ss_middleman = SSMiddleman::new().start();
+        let (tx_from_input, rx_to_sl) = tokio::sync::broadcast::channel::<String>(2);
+        let rx_to_ss = tx_from_input.subscribe();
 
         let order_handler = OrderHandler::new(&orders).start();
         handles.push(sl_communicator::setup_locals_connection(
             order_handler.clone(),
+            rx_to_sl,
         ));
-        // handles.push(ss_communicator::setup_servers_connection());
+        // handles.push(ss_communicator::setup_servers_connection(rx_from_ss));
 
         handles.push(input_handler::setup_input_listener(order_handler));
 
