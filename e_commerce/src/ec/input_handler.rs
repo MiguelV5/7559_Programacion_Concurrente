@@ -1,3 +1,5 @@
+use std::sync::mpsc;
+
 use crate::ec::constants::PUSH_ORDERS_MSG;
 
 use super::constants::EXIT_MSG;
@@ -8,11 +10,11 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
-pub fn setup_input_listener(order_pusher: Addr<OrderHandler>) -> JoinHandle<()> {
-    // para el cerrado de conexion en local_shop se puede hacer lo mismo pero
-    // pasandole a esta funcion un channel, de tal forma que dentro del else if CC
-    // se espere a obtener la addr del actor correspondiente y ya con eso se le
-    // puede mandar el mensaje de cerrar conexion
+pub fn setup_input_listener(
+    order_pusher: Addr<OrderHandler>,
+    tx_to_sl: mpsc::Sender<String>,
+    tx_to_ss: mpsc::Sender<String>,
+) -> JoinHandle<()> {
     actix::spawn(async move {
         info!("Input listener thread started");
         let stdin = stdin();
@@ -21,6 +23,8 @@ pub fn setup_input_listener(order_pusher: Addr<OrderHandler>) -> JoinHandle<()> 
         while let Ok(Some(line)) = reader.next_line().await {
             if line == EXIT_MSG {
                 info!("Exit command received");
+                tx_to_sl.send(EXIT_MSG.to_string()).unwrap();
+                tx_to_ss.send(EXIT_MSG.to_string()).unwrap();
                 match System::try_current() {
                     Some(system) => system.stop(),
                     None => info!("No actix system running"),

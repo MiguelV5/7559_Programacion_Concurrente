@@ -1,10 +1,12 @@
-use std::sync::Arc;
+use std::net::TcpListener;
+use std::sync::{mpsc, Arc};
 
 use actix::{
     dev::ContextFutureSpawner, fut::wrap_future, Actor, ActorContext, Addr, Context, StreamHandler,
 };
 use actix_rt::System;
 use tokio::io::{split, WriteHalf};
+use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio::{
@@ -67,80 +69,107 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
 
 pub fn setup_locals_connection(
     order_handler: Addr<OrderHandler>,
-    mut rx_from_input: tokio::sync::broadcast::Receiver<String>,
+    rx_from_input: mpsc::Receiver<String>,
 ) -> JoinHandle<()> {
     actix::spawn(async move {
-        if let Ok((listener, listener_addr)) =
-            shared::port_binder::listener_binder::async_try_bind_listener(
-                SL_INITIAL_PORT,
-                SL_MAX_PORT,
-            )
-            .await
-        {
-            info!("Iniciado listener en {}", listener_addr);
-            let mut local_shop_id = 1;
-            loop {
-                // TODO: change while into non-blocking accept with a previous check of a channel from the input handler
+        if let Err(e) = handle_incoming_locals(order_handler, rx_from_input) {
+            error!("{}", e);
+        };
+    })
+}
 
-                match rx_from_input.try_recv() {
-                    Ok(msg) => {
-                        if msg == EXIT_MSG {
-                            info!("Received exit msg from input_handler, stopping listener");
-                            match System::try_current() {
-                                Some(system) => system.stop(),
-                                None => info!("No actix system running"),
-                            }
-                            return;
-                        }
-                    }
-                    Err(e) => {
-                        error!(" Error in received msg from input_handler: {}", e);
-                    }
-                }
+fn handle_incoming_locals(
+    order_handler: Addr<OrderHandler>,
+    rx_from_input: mpsc::Receiver<String>,
+) -> Result<(), String> {
+    if let Ok((listener, listener_addr)) =
+        shared::port_binder::listener_binder::try_bind_listener(SL_INITIAL_PORT, SL_MAX_PORT)
+    {
+        info!("Iniciado listener en {}", listener_addr);
+        listener
+            .set_nonblocking(true)
+            .map_err(|err| err.to_string())?;
 
-                if let Ok((stream, stream_addr)) = listener.accept().await {
-                    info!(" [{:?}] Cliente conectado", stream_addr);
+        handle_communication_loop(rx_from_input, listener, order_handler)
+    } else {
+        if let Some(system) = System::try_current() {
+            system.stop()
+        }
+        Err("Error al intentar bindear el puerto".to_string())
+    }
+}
 
-                    let (read_half, write_half) = split(stream);
+fn handle_communication_loop(
+    rx_from_input: mpsc::Receiver<String>,
+    listener: TcpListener,
+    order_handler: Addr<OrderHandler>,
+) -> Result<(), String> {
+    let mut local_shop_id = 0;
+    loop {
+        if is_exit_required(&rx_from_input) {
+            return Ok(());
+        }
 
-                    let sl_middleman_addr = SLMiddleman::create(|ctx| {
-                        SLMiddleman::add_stream(
-                            LinesStream::new(BufReader::new(read_half).lines()),
-                            ctx,
-                        );
-                        SLMiddleman {
-                            local_shop_write_stream: Arc::new(Mutex::new(write_half)),
-                            local_shop_id,
-                        }
-                    });
-
-                    match order_handler
-                        .send(AddSLMiddlemanAddr {
-                            sl_middleman_addr: sl_middleman_addr.clone(),
-                            local_shop_id,
-                        })
-                        .await
-                    {
-                        Ok(_) => {}
-                        Err(e) => {
-                            error!(" Error al enviar AddLocalShopStream: {}", e);
-                            match System::try_current() {
-                                Some(system) => system.stop(),
-                                None => info!("No actix system running"),
-                            }
-                            return;
-                        }
-                    }
-
-                    local_shop_id += 1;
-                } else {
-                    error!(" Error al intentar bindear el puerto");
-                    match System::try_current() {
-                        Some(system) => system.stop(),
-                        None => info!("No actix system running"),
-                    }
-                }
+        if let Ok((stream, stream_addr)) = listener.accept() {
+            if let Ok(async_stream) = AsyncTcpStream::from_std(stream) {
+                info!(" [{:?}] Cliente conectado", stream_addr);
+                handle_connected_local_shop(async_stream, &order_handler, local_shop_id);
+                local_shop_id += 1;
             }
         }
-    })
+    }
+}
+
+fn handle_connected_local_shop(
+    async_stream: AsyncTcpStream,
+    order_handler: &Addr<OrderHandler>,
+    local_shop_id: u32,
+) {
+    let (read_half, write_half) = split(async_stream);
+
+    let sl_middleman_addr = SLMiddleman::create(|ctx| {
+        SLMiddleman::add_stream(LinesStream::new(BufReader::new(read_half).lines()), ctx);
+        SLMiddleman {
+            local_shop_write_stream: Arc::new(Mutex::new(write_half)),
+            local_shop_id,
+        }
+    });
+
+    async {
+        match order_handler
+            .send(AddSLMiddlemanAddr {
+                sl_middleman_addr: sl_middleman_addr.clone(),
+                local_shop_id,
+            })
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                if let Some(system) = System::try_current() {
+                    system.stop()
+                }
+                return Err(format!(
+                    "Error al enviar AddSLMiddlemanAddr al OrderHandler: {}",
+                    e.to_string()
+                ));
+            }
+        }
+    };
+}
+
+fn is_exit_required(rx_from_input: &mpsc::Receiver<String>) -> bool {
+    match rx_from_input.try_recv() {
+        Ok(msg) => {
+            if msg == EXIT_MSG {
+                info!("Received exit msg from input_handler, stopping listener");
+                if let Some(system) = System::try_current() {
+                    system.stop()
+                }
+                return true;
+            } else {
+                return false;
+            }
+        }
+        Err(_) => return false,
+    }
 }
