@@ -5,12 +5,11 @@ use rand::Rng;
 use shared::model::{order::Order, stock_product::Product};
 use tracing::{error, info, trace};
 
-use crate::shop::{
+use super::{order_handler::OrderHandlerActor, stock_handler::StockHandlerActor};
+use crate::local_shop::{
     order_handler,
     stock_handler::{self},
 };
-
-use super::{order_handler::OrderHandlerActor, stock_handler::StockHandlerActor};
 
 pub struct OrderWorkerActor {
     id: Option<usize>,
@@ -182,7 +181,7 @@ impl Handler<StockProductGiven> for OrderWorkerActor {
         self.taken_products.push(msg.product);
         self.curr_asked_product = self.remaining_products.pop();
 
-        if let None = self.curr_asked_product {
+        if self.curr_asked_product.is_none() {
             return self
                 .order_handler_addr
                 .try_send(order_handler::OrderFinished {
@@ -242,7 +241,7 @@ impl Handler<StockProductReserved> for OrderWorkerActor {
         );
 
         self.curr_asked_product = self.remaining_products.pop();
-        if let None = self.curr_asked_product {
+        if self.curr_asked_product.is_none() {
             self.curr_asked_product = self.reserved_products.pop();
             info!("[OrderWorker {:?}] No more product to reserve, starting to take reserved products.", self.id());
             return ctx
@@ -284,7 +283,7 @@ impl Handler<RandomTakeReservedProduct> for OrderWorkerActor {
             return Err("Should not happen, the worker is not ready.".to_string());
         }
 
-        if let None = self.curr_asked_product {
+        if self.curr_asked_product.is_none() {
             return self
                 .order_handler_addr
                 .try_send(order_handler::OrderFinished {
@@ -372,7 +371,7 @@ impl Handler<StockReservedProductGiven> for OrderWorkerActor {
         self.taken_products.push(msg.product);
 
         self.curr_asked_product = self.reserved_products.pop();
-        if let None = self.curr_asked_product {
+        if self.curr_asked_product.is_none() {
             return self
                 .order_handler_addr
                 .try_send(order_handler::OrderFinished {

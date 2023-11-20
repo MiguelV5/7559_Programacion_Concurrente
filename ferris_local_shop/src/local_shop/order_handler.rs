@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::shop::order_worker;
+use crate::local_shop::order_worker;
 use actix::prelude::*;
 use shared::model::order::Order;
 use tracing::{error, info};
@@ -72,12 +72,10 @@ impl OrderHandlerActor {
             } else {
                 order = self.web_orders.pop();
             }
+        } else if !self.web_orders.is_empty() {
+            order = self.web_orders.pop();
         } else {
-            if !self.web_orders.is_empty() {
-                order = self.web_orders.pop();
-            } else {
-                order = self.local_orders.pop();
-            }
+            order = self.local_orders.pop();
         }
 
         order
@@ -215,7 +213,7 @@ impl Handler<OrderFinished> for OrderHandlerActor {
             .map_err(|err| err.to_string())?;
 
         // informo a los ecommerce que hice la compra
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -255,7 +253,6 @@ impl Handler<OrderNotFinished> for OrderHandlerActor {
             .try_send(SendOrder {
                 worker_id: order_worker.id,
             })
-            .map_err(|err| err.to_string())?;
-        return Ok(());
+            .map_err(|err| err.to_string())
     }
 }

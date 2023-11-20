@@ -1,19 +1,19 @@
 //! # FerrisCommerce - Modulo de compras locales
 //!
 
-pub mod shop;
+pub mod local_shop;
 
 use std::{collections::HashMap, error::Error, fmt};
 
 use actix::{Actor, SyncArbiter};
 use actix_rt::System;
+use local_shop::{order_handler, order_worker::OrderWorkerActor};
 use shared::{
     model::{order::Order, stock_product::Product},
     parsers::{orders_parser::OrdersParser, stock_parser::StockParser},
 };
-use shop::{order_handler, order_worker::OrderWorkerActor};
 
-use crate::shop::{
+use crate::local_shop::{
     constants::{DEFAULT_ORDERS_FILEPATH, DEFAULT_STOCK_FILEPATH},
     order_handler::OrderHandlerActor,
     stock_handler::StockHandlerActor,

@@ -1,6 +1,6 @@
 use std::io::{stdin, BufRead, BufReader};
 
-use crate::shop::constants::CLOSE_CONNECTION_MSG;
+use crate::local_shop::constants::CLOSE_CONNECTION_MSG;
 use actix::prelude::*;
 use tracing::info;
 

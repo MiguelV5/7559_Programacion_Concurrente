@@ -1,5 +1,5 @@
 [package]
-name = "local_shop"
+name = "ferris_local_shop"
 version = "0.1.0"
 edition = "2021"
 

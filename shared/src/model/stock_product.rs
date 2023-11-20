@@ -40,6 +40,6 @@ impl Product {
             self.quantity = 0;
             return;
         }
-        self.quantity = self.quantity + value;
+        self.quantity += value;
     }
 }
