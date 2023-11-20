@@ -1,16 +1,10 @@
 pub mod db_communicator;
+pub mod global_stock;
 pub mod pending_deliveries;
 
 use actix::{Actor, StreamHandler};
-use actix_rt::System;
 use pending_deliveries::PendingDeliveries;
-use shared::model::db_request::{
-    DatabaseMessageBody, DatabaseRequest, RequestCategory, RequestType,
-};
-use std::{
-    io::{Read, Write},
-    sync::Arc,
-};
+use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::{
     io::{split, AsyncBufReadExt, BufReader},
@@ -35,13 +29,14 @@ pub async fn run() {
     info!("Starting database server...");
 
     let pending_deliveries = PendingDeliveries::new();
+    let global_stock = global_stock::GlobalStock::new();
 
-    let listener = TcpListener::bind("127.0.0.1:12345").await.unwrap();
+    let listener = TcpListener::bind("127.0.0.1:9999").await.unwrap();
 
-    println!("Esperando conexiones!");
+    info!("Database server listening on port 9999...");
 
     while let Ok((stream, addr)) = listener.accept().await {
-        println!("[{:?}] Cliente conectado", addr);
+        info!("[{:?}] Client accepted", addr);
 
         DBServer::create(|ctx| {
             let (read, write_half) = split(stream);
@@ -51,6 +46,7 @@ pub async fn run() {
                 addr,
                 db_write_stream,
                 pending_deliveries: pending_deliveries.clone(),
+                global_stock: global_stock.clone(),
             }
         });
     }

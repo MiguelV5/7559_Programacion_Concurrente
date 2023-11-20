@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::db_message_body::DatabaseMessageBody;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DatabaseResponse {
     pub response_status: ResponseStatus,
@@ -13,13 +15,6 @@ impl DatabaseResponse {
             body,
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum DatabaseMessageBody {
-    OrderId(i32),
-    ProductsToDelivery(Vec<ProductToDelivery>),
-    None, //TODO: stocks
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

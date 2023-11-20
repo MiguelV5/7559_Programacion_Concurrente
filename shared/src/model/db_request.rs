@@ -1,5 +1,6 @@
-use super::product_to_delivery::ProductToDelivery;
 use serde::{Deserialize, Serialize};
+
+use super::db_message_body::DatabaseMessageBody;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DatabaseRequest {
@@ -20,13 +21,6 @@ impl DatabaseRequest {
             body,
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum DatabaseMessageBody {
-    OrderId(i32),
-    ProductsToDelivery(Vec<ProductToDelivery>),
-    None, //TODO: stocks
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

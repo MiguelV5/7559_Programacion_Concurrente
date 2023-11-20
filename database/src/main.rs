@@ -1,4 +1,4 @@
 #[actix_rt::main]
-fn main() {
-    database::run();
+async fn main() {
+    database::run().await;
 }
