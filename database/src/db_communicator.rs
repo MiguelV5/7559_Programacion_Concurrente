@@ -1,6 +1,7 @@
 use actix::{fut::wrap_future, prelude::*};
-use shared::model::db_request::{
-    DatabaseMessageBody, DatabaseRequest, RequestCategory, RequestType,
+use shared::model::{
+    db_request::{DatabaseMessageBody, DatabaseRequest, RequestCategory, RequestType},
+    db_response,
 };
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{
@@ -27,21 +28,35 @@ impl Actor for DBServer {
 }
 
 //TODO: Implement response messages
-fn handle_request(request: DatabaseRequest, pending_deliveries: &mut PendingDeliveries) -> String {
+fn handle_request(request: DatabaseRequest, pending_deliveries: &mut PendingDeliveries) -> &[u8] {
     match request.request_category {
         RequestCategory::PendingDelivery => match request.request_type {
             RequestType::GetAll => {
-                pending_deliveries.get_all_deliveries();
-                "Ok".to_string()
+                let deliveries = pending_deliveries.get_all_deliveries();
+                db_response::DatabaseResponse::new(
+                    db_response::ResponseStatus::Ok,
+                    DatabaseMessageBody::ProductsToDelivery(deliveries),
+                )
+                .as_bytes()
             }
             RequestType::GetOne => {
                 let product;
                 if let DatabaseMessageBody::OrderId(order_id) = request.body {
                     product = pending_deliveries.get_delivery(order_id);
-                    println!("{:?}", product);
+                    db_response::DatabaseResponse::new(
+                        db_response::ResponseStatus::Ok,
+                        DatabaseMessageBody::ProductsToDelivery(vec![product.unwrap()]),
+                    )
+                    .as_bytes()
+                } else {
+                    db_response::DatabaseResponse::new(
+                        db_response::ResponseStatus::Error(
+                            "Not found product to delivery".to_string(),
+                        ),
+                        DatabaseMessageBody::None,
+                    )
+                    .as_bytes()
                 }
-
-                "Ok".to_string()
             }
             RequestType::Post => {
                 if let DatabaseMessageBody::ProductsToDelivery(products_to_delivery) = request.body
@@ -50,18 +65,26 @@ fn handle_request(request: DatabaseRequest, pending_deliveries: &mut PendingDeli
                         pending_deliveries.add_delivery(product_to_delivery);
                     }
                 }
-                "Ok".to_string()
+                db_response::DatabaseResponse::new(
+                    db_response::ResponseStatus::Ok,
+                    DatabaseMessageBody::None,
+                )
+                .as_bytes()
             }
             RequestType::Delete => {
                 if let DatabaseMessageBody::OrderId(order_id) = request.body {
                     pending_deliveries.remove_delivery(order_id);
                 }
-                "Ok".to_string()
+                db_response::DatabaseResponse::new(
+                    db_response::ResponseStatus::Ok,
+                    DatabaseMessageBody::None,
+                )
+                .as_bytes()
             }
         },
         RequestCategory::ProductStock => {
             //TODO: Implement
-            "".to_string()
+            "Ok".as_bytes()
         }
     }
 }
@@ -77,9 +100,9 @@ impl StreamHandler<Result<String, std::io::Error>> for DBServer {
                     let writer = self.db_write_stream.clone();
                     wrap_future::<_, Self>(async move {
                         if let Ok(_) = writer.lock().await.write_all(response.as_bytes()).await {
-                            info!("Respuesta enviada al local shop");
+                            info!("Response sent successfully: {:?}", response);
                         } else {
-                            error!("Error al escribir en el stream")
+                            error!("Error sending response: {:?}", response);
                         };
                     })
                     .spawn(ctx)
