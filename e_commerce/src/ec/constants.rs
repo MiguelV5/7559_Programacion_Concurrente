@@ -1,4 +1,4 @@
-pub const DEFAULT_ORDERS_FILEPATH: &str = "local_shop/data/orders/orders1.txt";
+pub const DEFAULT_ORDERS_FILEPATH: &str = "data/orders/orders1.txt";
 
 pub const SL_INITIAL_PORT: u16 = 11000;
 pub const SL_MAX_PORT: u16 = 11005;

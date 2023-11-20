@@ -6,7 +6,7 @@ use actix::{
     StreamHandler,
 };
 use actix::{ActorContext, AsyncContext};
-use shared::port_binder::listener_binder::{self, LOCALHOST};
+use shared::port_binder::listener_binder::LOCALHOST;
 use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 
@@ -87,13 +87,16 @@ impl StreamHandler<Result<String, std::io::Error>> for SSMiddleman {
 
 pub fn setup_servers_connections(
     order_handler: Addr<OrderHandler>,
+    servers_listening_port: u16,
     rx_from_input: mpsc::Receiver<String>,
 ) -> JoinHandle<()> {
-    actix::spawn(async {
+    actix::spawn(async move {
         if let Err(e) = try_connect_to_servers(order_handler.clone()).await {
             warn!("{}", e);
         }
-        if let Err(e) = handle_incoming_servers(order_handler, rx_from_input).await {
+        if let Err(e) =
+            handle_incoming_servers(order_handler, servers_listening_port, rx_from_input).await
+        {
             error!("Error handling incoming servers: {}", e);
         }
     })
@@ -150,12 +153,16 @@ async fn try_connect_to_servers(order_handler: Addr<OrderHandler>) -> Result<(),
 
 async fn handle_incoming_servers(
     order_handler: Addr<OrderHandler>,
+    servers_listening_port: u16,
     rx_from_input: mpsc::Receiver<String>,
 ) -> Result<(), String> {
-    if let Ok((listener, listener_addr)) =
-        listener_binder::async_try_bind_listener(SS_INITIAL_PORT, SS_MAX_PORT).await
+    if let Ok(listener) =
+        AsyncTcpListener::bind(format!("{}:{}", LOCALHOST, servers_listening_port)).await
     {
-        info!("Starting listener for Servers at {}", listener_addr);
+        info!(
+            "Starting listener for Servers at [{}:{}]",
+            LOCALHOST, servers_listening_port
+        );
 
         handle_communication_loop(rx_from_input, listener, order_handler).await
     } else {

@@ -14,11 +14,8 @@ use tokio_stream::wrappers::LinesStream;
 use tracing::{error, info, warn};
 
 use crate::ec::constants::EXIT_MSG;
-use crate::ec::{
-    constants::{SL_INITIAL_PORT, SL_MAX_PORT},
-    order_handler::AddSLMiddlemanAddr,
-};
-use shared::port_binder::listener_binder;
+use crate::ec::order_handler::AddSLMiddlemanAddr;
+use shared::port_binder::listener_binder::LOCALHOST;
 
 use super::order_handler::OrderHandler;
 
@@ -75,10 +72,13 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
 
 pub fn setup_local_shops_connections(
     order_handler: Addr<OrderHandler>,
+    locals_listening_port: u16,
     rx_from_input: mpsc::Receiver<String>,
 ) -> JoinHandle<()> {
-    actix::spawn(async {
-        if let Err(e) = handle_incoming_locals(order_handler, rx_from_input).await {
+    actix::spawn(async move {
+        if let Err(e) =
+            handle_incoming_locals(order_handler, locals_listening_port, rx_from_input).await
+        {
             error!("{}", e);
         };
     })
@@ -86,12 +86,16 @@ pub fn setup_local_shops_connections(
 
 async fn handle_incoming_locals(
     order_handler: Addr<OrderHandler>,
+    locals_listening_port: u16,
     rx_from_input: mpsc::Receiver<String>,
 ) -> Result<(), String> {
-    if let Ok((listener, listener_addr)) =
-        listener_binder::async_try_bind_listener(SL_INITIAL_PORT, SL_MAX_PORT).await
+    if let Ok(listener) =
+        AsyncTcpListener::bind(format!("{}:{}", LOCALHOST, locals_listening_port)).await
     {
-        info!("Starting listener for Clients in {}", listener_addr);
+        info!(
+            "Starting listener for Clients in [{}:{}]",
+            LOCALHOST, locals_listening_port
+        );
 
         handle_communication_loop(rx_from_input, listener, order_handler).await
     } else {
