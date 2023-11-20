@@ -46,7 +46,7 @@ pub fn start(
 
 fn parse_given_orders(orders_file_path: &str) -> Result<Vec<Order>, Box<dyn Error>> {
     let orders;
-    if let Ok(orders_parser) = OrdersParser::new(&format!(
+    if let Ok(orders_parser) = OrdersParser::new_web(&format!(
         "{}/{}",
         env!("CARGO_MANIFEST_DIR"),
         orders_file_path
