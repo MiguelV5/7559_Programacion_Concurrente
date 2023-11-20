@@ -3,24 +3,15 @@
 
 pub mod local_shop;
 
-use std::{collections::HashMap, error::Error, fmt};
+use std::{error::Error, fmt};
 
-use actix::{Actor, SyncArbiter};
-use actix_rt::System;
-use local_shop::{order_handler, order_worker::OrderWorkerActor};
-use shared::{
-    model::{order::Order, stock_product::Product},
-    parsers::{orders_parser::OrdersParser, stock_parser::StockParser},
-};
+use local_shop::constants::DEFAULT_NUM_WORKERS;
+use tracing::{error, info, trace, warn};
 
-use crate::local_shop::{
-    constants::{DEFAULT_ORDERS_FILEPATH, DEFAULT_STOCK_FILEPATH},
-    order_handler::OrderHandlerActor,
-    stock_handler::StockHandlerActor,
-};
+use crate::local_shop::constants::{DEFAULT_ORDERS_FILEPATH, DEFAULT_STOCK_FILEPATH};
 
 #[derive(Debug)]
-pub enum ShopError {
+pub enum LocalShopError {
     ArgsParsingError(String),
     OrdersFileParsingError(String),
     StockFileParsingError(String),
@@ -28,12 +19,12 @@ pub enum ShopError {
     SystemError(String),
 }
 
-impl fmt::Display for ShopError {
+impl fmt::Display for LocalShopError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
-impl Error for ShopError {}
+impl Error for LocalShopError {}
 
 fn init_logger() {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -42,58 +33,62 @@ fn init_logger() {
     let _ = tracing::subscriber::set_global_default(subscriber);
 }
 
-// fn parse_args() -> Result<String, ShopError> {
-//     let args: Vec<String> = std::env::args().collect();
-//     if args.len() == 1 {
-//         info!("No orders file path was given, using default");
-//         Ok(String::from(DEFAULT_ORDERS_FILEPATH))
-//     } else if args.len() == 2 {
-//         Ok(args[1].clone())
-//     } else {
-//         error!("Too many arguments were given\n Usage: cargo run -p local_shop -- [<orders_file_path>]");
-//         Err(ShopError::ArgsParsingError(String::from(
-//             "Too many arguments",
-//         )))
-//     }
-// }
+fn parse_args() -> Result<(String, String, usize), LocalShopError> {
+    let mut args: Vec<String> = std::env::args().collect();
+    args.remove(0);
 
-pub fn run() -> Result<(), ShopError> {
-    init_logger();
-    // let orders_path = parse_args()?;
-    let stock_products_path =
-        env!("CARGO_MANIFEST_DIR").to_owned() + DEFAULT_STOCK_FILEPATH + "stock1.txt";
-    let stock_parser = StockParser::new(&stock_products_path)
-        .map_err(|err| ShopError::StockFileParsingError(err.to_string()))?;
-    let stock = stock_parser.get_products();
+    let mut order_path = DEFAULT_ORDERS_FILEPATH.to_string();
+    let mut stock_path = DEFAULT_STOCK_FILEPATH.to_string();
+    let mut num_workers = DEFAULT_NUM_WORKERS;
 
-    let orders_path =
-        env!("CARGO_MANIFEST_DIR").to_owned() + DEFAULT_ORDERS_FILEPATH + "orders1.txt";
-    let orders_parser = OrdersParser::new_web(&orders_path)
-        .map_err(|err| ShopError::OrdersFileParsingError(err.to_string()))?;
-    let local_orders = orders_parser.get_orders();
+    if args.len() == 0 {
+        info!("[LocalShop] No arguments provided, using default paths");
+        return Ok((order_path, stock_path, num_workers));
+    }
 
-    let system = System::new();
-    system.block_on(run_actors(stock, local_orders))?;
-    system
-        .run()
-        .map_err(|err| ShopError::SystemError(err.to_string()))
+    if args.len() % 2 != 0 {
+        error!("[LocalShop] Invalid arguments");
+        warn!("Usage: cargo run -- -o <orders_file_path> -s <stock_file_path> -w <num_workers>");
+        return Err(LocalShopError::ArgsParsingError(String::from(
+            "Invalid argument.",
+        )));
+    }
+
+    for arg in args.chunks_exact(2) {
+        if arg[0] == "-o" {
+            trace!("[LocalShop] Orders file path: {}", arg[1].to_owned());
+            order_path = arg[1].to_owned();
+        } else if arg[0] == "-s" {
+            trace!("[LocalShop] Stock file path: {}", arg[1].to_owned());
+            stock_path = arg[1].to_owned();
+        } else if arg[0] == "-w" {
+            trace!("[LocalShop] Number of workers: {}", arg[1].to_owned());
+            num_workers = arg[1].parse::<usize>().map_err(|err| {
+                error!("[LocalShop] Invalid number of workers: {}", err);
+                LocalShopError::ArgsParsingError(String::from("Invalid number of workers"))
+            })?;
+            if num_workers <= 0 {
+                error!("[LocalShop] Invalid number of workers: {}", num_workers);
+                return Err(LocalShopError::ArgsParsingError(String::from(
+                    "Invalid number of workers",
+                )));
+            }
+        } else {
+            error!("[LocalShop] Invalid argument: {}", arg[0].to_owned());
+            warn!(
+                "Usage: cargo run -- -o <orders_file_path> -s <stock_file_path> -w <num_workers>"
+            );
+            return Err(LocalShopError::ArgsParsingError(String::from(
+                "Invalid argument.",
+            )));
+        }
+    }
+
+    Ok((order_path, stock_path, num_workers))
 }
 
-async fn run_actors(
-    stock: HashMap<String, Product>,
-    local_orders: Vec<Order>,
-) -> Result<(), ShopError> {
-    let stock_handler_addr = SyncArbiter::start(1, move || StockHandlerActor::new(stock.clone()));
-    let order_handler_addr = OrderHandlerActor::new(local_orders).start();
-
-    for _ in 0..3 {
-        let order_worker_addr =
-            OrderWorkerActor::new(order_handler_addr.clone(), stock_handler_addr.clone()).start();
-        order_handler_addr
-            .try_send(order_handler::AddNewOrderWorker {
-                worker_addr: order_worker_addr.clone(),
-            })
-            .map_err(|err| ShopError::ActorError(err.to_string()))?;
-    }
-    Ok(())
+pub fn run() -> Result<(), LocalShopError> {
+    init_logger();
+    let (orders_path, stock_path, num_workers) = parse_args()?;
+    local_shop::handler::start(orders_path, stock_path, num_workers)
 }

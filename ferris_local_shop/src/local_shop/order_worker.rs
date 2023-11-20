@@ -105,35 +105,18 @@ impl Handler<WorkNewOrder> for OrderWorkerActor {
         };
         self.curr_order = Some(msg.order.clone());
 
-        self.curr_asked_product = self.remaining_products.pop();
-
-        info!(
-            "[OrderWorker {:?}] Asking for product: {:?}",
-            self.id(),
-            self.curr_asked_product
-        );
         match self
             .curr_order
             .as_ref()
             .ok_or("Should not happen, the current order cannot be None.")?
         {
-            Order::Local(_) => self
-                .stock_handler_addr
-                .try_send(stock_handler::TakeProduct {
-                    worker_addr: ctx.address(),
-                    product: self.curr_asked_product.clone().ok_or(
-                        "Should not happen, the current product cannot be None.".to_string(),
-                    )?,
-                })
+            Order::Local(_) => ctx
+                .address()
+                .try_send(TrySendTakeProduct {})
                 .map_err(|err| err.to_string()),
-            Order::Web(_) => self
-                .stock_handler_addr
-                .try_send(stock_handler::ReserveProduct {
-                    worker_addr: ctx.address(),
-                    product: self.curr_asked_product.clone().ok_or(
-                        "Should not happen, the current product cannot be None.".to_string(),
-                    )?,
-                })
+            Order::Web(_) => ctx
+                .address()
+                .try_send(TryReserveProduct {})
                 .map_err(|err| err.to_string()),
         }
     }
@@ -179,12 +162,25 @@ impl Handler<StockProductGiven> for OrderWorkerActor {
             msg.product
         );
         self.taken_products.push(msg.product);
-        self.curr_asked_product = self.remaining_products.pop();
 
+        ctx.address()
+            .try_send(TrySendTakeProduct {})
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+struct TrySendTakeProduct {}
+
+impl Handler<TrySendTakeProduct> for OrderWorkerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: TrySendTakeProduct, ctx: &mut Context<Self>) -> Self::Result {
+        self.curr_asked_product = self.remaining_products.pop();
         if self.curr_asked_product.is_none() {
-            return self
-                .order_handler_addr
-                .try_send(order_handler::OrderFinished {
+            self.order_handler_addr
+                .try_send(order_handler::OrderCompleted {
                     worker_id: self
                         .id
                         .ok_or("Should not happen, the worker id cannot be None.".to_string())?,
@@ -193,6 +189,10 @@ impl Handler<StockProductGiven> for OrderWorkerActor {
                         .take()
                         .ok_or("Should not happen, the current order cannot be None.")?,
                 })
+                .map_err(|err| err.to_string())?;
+            return ctx
+                .address()
+                .try_send(CleanUp {})
                 .map_err(|err| err.to_string());
         }
 
@@ -240,9 +240,22 @@ impl Handler<StockProductReserved> for OrderWorkerActor {
                 .ok_or("Should not happen, the current product cannot be None.")?,
         );
 
+        ctx.address()
+            .try_send(TryReserveProduct {})
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+struct TryReserveProduct {}
+
+impl Handler<TryReserveProduct> for OrderWorkerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: TryReserveProduct, ctx: &mut Context<Self>) -> Self::Result {
         self.curr_asked_product = self.remaining_products.pop();
         if self.curr_asked_product.is_none() {
-            self.curr_asked_product = self.reserved_products.pop();
             info!("[OrderWorker {:?}] No more product to reserve, starting to take reserved products.", self.id());
             return ctx
                 .address()
@@ -264,68 +277,6 @@ impl Handler<StockProductReserved> for OrderWorkerActor {
                     .ok_or("Should not happen, the current product cannot be None.".to_string())?,
             })
             .map_err(|err| err.to_string())
-    }
-}
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-struct RandomTakeReservedProduct {}
-
-impl Handler<RandomTakeReservedProduct> for OrderWorkerActor {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, _: RandomTakeReservedProduct, ctx: &mut Context<Self>) -> Self::Result {
-        if !self.am_i_ready() {
-            error!(
-                "[OrderWorker {:?}] Should not happen, the worker is not ready.",
-                self.id()
-            );
-            return Err("Should not happen, the worker is not ready.".to_string());
-        }
-
-        if self.curr_asked_product.is_none() {
-            return self
-                .order_handler_addr
-                .try_send(order_handler::OrderFinished {
-                    worker_id: self
-                        .id
-                        .ok_or("Should not happen, the worker id cannot be None.".to_string())?,
-                    order: self
-                        .curr_order
-                        .take()
-                        .ok_or("Should not happen, the current order cannot be None.")?,
-                })
-                .map_err(|err| err.to_string());
-        }
-
-        let product = self
-            .curr_asked_product
-            .clone()
-            .ok_or("Should not happen, the current product cannot be None.".to_string())?;
-
-        let random = rand::thread_rng().gen_range(0..10);
-        if random >= 6 {
-            info!(
-                "[OrderWorker {:?}] Randomly product not recalled: {:?}",
-                self.id(),
-                product
-            );
-            ctx.address()
-                .try_send(SendUnreserveProduct {})
-                .map_err(|err| err.to_string())
-        } else {
-            info!(
-                "[OrderWorker {:?}] Randomly reserved product taken: {:?}",
-                self.id(),
-                product
-            );
-            self.stock_handler_addr
-                .try_send(stock_handler::TakeReservedProduct {
-                    worker_addr: ctx.address(),
-                    product,
-                })
-                .map_err(|err| err.to_string())
-        }
     }
 }
 
@@ -370,11 +321,24 @@ impl Handler<StockReservedProductGiven> for OrderWorkerActor {
         );
         self.taken_products.push(msg.product);
 
+        ctx.address()
+            .try_send(RandomTakeReservedProduct {})
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+struct RandomTakeReservedProduct {}
+
+impl Handler<RandomTakeReservedProduct> for OrderWorkerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: RandomTakeReservedProduct, ctx: &mut Context<Self>) -> Self::Result {
         self.curr_asked_product = self.reserved_products.pop();
         if self.curr_asked_product.is_none() {
-            return self
-                .order_handler_addr
-                .try_send(order_handler::OrderFinished {
+            self.order_handler_addr
+                .try_send(order_handler::OrderCompleted {
                     worker_id: self
                         .id
                         .ok_or("Should not happen, the worker id cannot be None.".to_string())?,
@@ -383,12 +347,41 @@ impl Handler<StockReservedProductGiven> for OrderWorkerActor {
                         .take()
                         .ok_or("Should not happen, the current order cannot be None.")?,
                 })
+                .map_err(|err| err.to_string())?;
+            return ctx
+                .address()
+                .try_send(CleanUp {})
                 .map_err(|err| err.to_string());
         }
 
-        ctx.address()
-            .try_send(RandomTakeReservedProduct {})
-            .map_err(|err| err.to_string())
+        let product = self
+            .curr_asked_product
+            .clone()
+            .ok_or("Should not happen, the current product cannot be None.".to_string())?;
+
+        let random = rand::thread_rng().gen_range(0..10);
+        if random >= 6 {
+            info!(
+                "[OrderWorker {:?}] Randomly product not recalled: {:?}",
+                self.id(),
+                product
+            );
+            ctx.address()
+                .try_send(SendUnreserveProduct {})
+                .map_err(|err| err.to_string())
+        } else {
+            info!(
+                "[OrderWorker {:?}] Randomly reserved product taken: {:?}",
+                self.id(),
+                product
+            );
+            self.stock_handler_addr
+                .try_send(stock_handler::TakeReservedProduct {
+                    worker_addr: ctx.address(),
+                    product,
+                })
+                .map_err(|err| err.to_string())
+        }
     }
 }
 
@@ -424,14 +417,6 @@ impl Handler<SendReturningProduct> for OrderWorkerActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: SendReturningProduct, ctx: &mut Context<Self>) -> Self::Result {
-        if !self.am_i_ready() {
-            error!(
-                "[OrderWorker {:?}]  Should not happen, the worker is not ready.",
-                self.id()
-            );
-            return Err("Should not happen, the worker is not ready.".to_string());
-        }
-
         if let Some(product) = self.taken_products.pop() {
             trace!(
                 "[OrderWorker {:?}] Returning product: {:?}.",
@@ -463,14 +448,6 @@ impl Handler<SendUnreserveProduct> for OrderWorkerActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: SendUnreserveProduct, ctx: &mut Context<Self>) -> Self::Result {
-        if !self.am_i_ready() {
-            error!(
-                "[OrderWorker {:?}]  Should not happen, the worker is not ready.",
-                self.id()
-            );
-            return Err("Should not happen, the worker is not ready.".to_string());
-        }
-
         if let Some(product) = self.reserved_products.pop() {
             trace!(
                 "[OrderWorker {:?}] Restoring reserved product: {:?}.",
@@ -489,7 +466,7 @@ impl Handler<SendUnreserveProduct> for OrderWorkerActor {
         }
 
         self.order_handler_addr
-            .try_send(order_handler::OrderNotFinished {
+            .try_send(order_handler::OrderCancelled {
                 worker_id: self
                     .id
                     .ok_or("Should not happen, the worker id cannot be None.".to_string())?,
@@ -498,6 +475,30 @@ impl Handler<SendUnreserveProduct> for OrderWorkerActor {
                     .take()
                     .ok_or("Should not happen, the current order cannot be None.")?,
             })
+            .map_err(|err| err.to_string())?;
+        ctx.address()
+            .try_send(CleanUp {})
             .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+struct CleanUp {}
+
+impl Handler<CleanUp> for OrderWorkerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: CleanUp, _: &mut Context<Self>) -> Self::Result {
+        info!("[OrderWorker {:?}] Cleaning up.", self.id());
+        self.curr_order = None;
+
+        self.taken_products = Vec::new();
+        self.reserved_products = Vec::new();
+        self.remaining_products = Vec::new();
+
+        self.curr_asked_product = None;
+
+        Ok(())
     }
 }

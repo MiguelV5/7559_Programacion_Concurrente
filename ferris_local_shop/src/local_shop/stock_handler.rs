@@ -188,7 +188,7 @@ impl Handler<UnreserveProduct> for StockHandlerActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: UnreserveProduct, _ctx: &mut SyncContext<Self>) -> Self::Result {
-        trace!("Unreserving product: {:?}", msg.product);
+        trace!("[StockHandler] Unreserving product: {:?}", msg.product);
 
         let requested_product_name = msg.product.get_name();
         let requested_product_quantity = msg.product.get_quantity();
