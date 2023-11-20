@@ -1,19 +1,25 @@
+use serde::{Deserialize, Serialize};
+
 use super::stock_product::Product;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Order {
     Local(LocalOrder),
     Web(WebOrder),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebOrder {
+    pub e_commerce_id: Option<usize>,
     products: Vec<Product>,
 }
 
 impl WebOrder {
     pub fn new(products: Vec<Product>) -> Self {
-        Self { products }
+        Self {
+            e_commerce_id: None,
+            products,
+        }
     }
 
     pub fn get_products(&self) -> Vec<Product> {
@@ -29,7 +35,7 @@ impl WebOrder {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalOrder {
     products: Vec<Product>,
 }

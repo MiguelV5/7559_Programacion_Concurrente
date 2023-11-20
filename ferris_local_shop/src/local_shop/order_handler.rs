@@ -3,9 +3,12 @@ use std::collections::HashMap;
 use crate::local_shop::order_worker;
 use actix::prelude::*;
 use shared::model::order::Order;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
-use super::order_worker::OrderWorkerActor;
+use super::{
+    connection_handler::{self, ConnectionHandlerActor},
+    order_worker::OrderWorkerActor,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct OrderWorkerStatus {
@@ -29,6 +32,7 @@ pub struct OrderHandlerActor {
     local_orders: Vec<Order>,
     web_orders: Vec<Order>,
     order_workers: HashMap<usize, OrderWorkerStatus>,
+    connection_handler: Option<Addr<ConnectionHandlerActor>>,
 }
 
 impl OrderHandlerActor {
@@ -37,6 +41,7 @@ impl OrderHandlerActor {
             local_orders,
             web_orders: Vec::new(),
             order_workers: HashMap::new(),
+            connection_handler: None,
         }
     }
 
@@ -95,7 +100,7 @@ pub struct AddNewOrderWorker {
 impl Handler<AddNewOrderWorker> for OrderHandlerActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: AddNewOrderWorker, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: AddNewOrderWorker, _: &mut Context<Self>) -> Self::Result {
         let worker_id = self.order_workers.len();
 
         info!(
@@ -111,33 +116,47 @@ impl Handler<AddNewOrderWorker> for OrderHandlerActor {
             OrderWorkerStatus::new(worker_id, msg.worker_addr),
         );
 
-        ctx.address()
-            .try_send(SendOrder { worker_id })
-            .map_err(|err| err.to_string())
+        // ctx.address()
+        //     .try_send(SendOrder { worker_id })
+        //     .map_err(|err| err.to_string())
+        Ok(())
     }
 }
 
-// #[derive(Message, Debug, PartialEq, Eq)]
-// #[rtype(result = "Result<(), String>")]
-// pub struct StartUp {}
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct AddNewConnectionHandler {
+    pub connection_handler_addr: Addr<ConnectionHandlerActor>,
+}
 
-// impl Handler<StartUp> for OrderHandlerActor {
-//     type Result = Result<(), String>;
+impl Handler<AddNewConnectionHandler> for OrderHandlerActor {
+    type Result = Result<(), String>;
 
-//     fn handle(&mut self, _: StartUp, _ctx: &mut Context<Self>) -> Self::Result {
-//         info!("Starting up order handler");
+    fn handle(&mut self, msg: AddNewConnectionHandler, _: &mut Context<Self>) -> Self::Result {
+        info!("[OrderHandler] Adding ConnectionHandler.");
+        self.connection_handler = Some(msg.connection_handler_addr);
+        Ok(())
+    }
+}
 
-//         for worker in self.order_workers.iter() {
-//             _ctx.address()
-//                 .try_send(SendOrder {
-//                     worker_id: worker.id,
-//                 })
-//                 .map_err(|err| err.to_string())?;
-//         }
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct StartUp {}
 
-//         Ok(())
-//     }
-// }
+impl Handler<StartUp> for OrderHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: StartUp, _ctx: &mut Context<Self>) -> Self::Result {
+        info!("[OrderHandler] Starting up.");
+        for (id, _) in self.order_workers.iter() {
+            _ctx.address()
+                .try_send(SendOrder { worker_id: *id })
+                .map_err(|err| err.to_string())?;
+        }
+
+        Ok(())
+    }
+}
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
@@ -180,79 +199,130 @@ impl Handler<SendOrder> for OrderHandlerActor {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct OrderFinished {
+pub struct OrderCompleted {
     pub worker_id: usize,
     pub order: Order,
 }
 
-impl Handler<OrderFinished> for OrderHandlerActor {
+impl Handler<OrderCompleted> for OrderHandlerActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: OrderFinished, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: OrderCompleted, ctx: &mut Context<Self>) -> Self::Result {
         let order_worker = self
             .order_workers
             .get_mut(&msg.worker_id)
             .ok_or("No worker with given id.")?;
-        if order_worker.given_order != Some(msg.order) {
+        if order_worker.given_order != Some(msg.order.clone()) {
             error!(
-                "[OrderHandler] Order finished from unknown OrderWorker: {:?}",
+                "[OrderHandler] Order completed from unknown OrderWorker: {:?}",
                 order_worker.given_order
             );
-            return Err("Order finished from unknown worker.".to_owned());
+            return Err("Order completed from unknown worker.".to_owned());
         }
 
         info!(
-            "[OrderHandler] Order finished from OrderWorker {:?}: {:?}",
+            "[OrderHandler] Order completed from OrderWorker {:?}: {:?}",
             order_worker.id, order_worker.given_order
         );
         order_worker.given_order = None;
+
         ctx.address()
-            .try_send(SendOrder {
-                worker_id: order_worker.id,
+            .try_send(HandleFinishedOrder {
+                order: msg.order,
+                was_finished: true,
             })
             .map_err(|err| err.to_string())?;
-
-        // informo a los ecommerce que hice la compra
-        Ok(())
-    }
-}
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-pub struct OrderNotFinished {
-    pub worker_id: usize,
-    pub order: Order,
-}
-
-impl Handler<OrderNotFinished> for OrderHandlerActor {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, msg: OrderNotFinished, ctx: &mut Context<Self>) -> Self::Result {
-        let order_worker = self
-            .order_workers
-            .get_mut(&msg.worker_id)
-            .ok_or("No worker with given id.")?;
-
-        if order_worker.given_order != Some(msg.order) {
-            error!(
-                "[OrderHandler] Order not finished from unknown OrderWorker: {:?}.",
-                order_worker.given_order
-            );
-            return Err("Order not finished from unknown OrderWorker.".to_owned());
-        }
-
-        info!(
-            "[OrderHandler] Order not finished from OrderWorker {:?}: {:?}.",
-            order_worker.id, order_worker.given_order
-        );
-        order_worker.given_order = None;
-
-        // informo a los ecommerce en caso que la compra haya sido web
-
         ctx.address()
             .try_send(SendOrder {
                 worker_id: order_worker.id,
             })
             .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct OrderCancelled {
+    pub worker_id: usize,
+    pub order: Order,
+}
+
+impl Handler<OrderCancelled> for OrderHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: OrderCancelled, ctx: &mut Context<Self>) -> Self::Result {
+        let order_worker = self
+            .order_workers
+            .get_mut(&msg.worker_id)
+            .ok_or("No worker with given id.")?;
+
+        if order_worker.given_order != Some(msg.order.clone()) {
+            error!(
+                "[OrderHandler] Order cancelled from unknown OrderWorker: {:?}.",
+                order_worker.given_order
+            );
+            return Err("Order cancelled from unknown OrderWorker.".to_owned());
+        }
+
+        info!(
+            "[OrderHandler] Order cancelled from OrderWorker {:?}: {:?}.",
+            order_worker.id, order_worker.given_order
+        );
+        order_worker.given_order = None;
+
+        ctx.address()
+            .try_send(HandleFinishedOrder {
+                order: msg.order,
+                was_finished: false,
+            })
+            .map_err(|err| err.to_string())?;
+        ctx.address()
+            .try_send(SendOrder {
+                worker_id: order_worker.id,
+            })
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+struct HandleFinishedOrder {
+    order: Order,
+    was_finished: bool,
+}
+
+impl Handler<HandleFinishedOrder> for OrderHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: HandleFinishedOrder, _: &mut Context<Self>) -> Self::Result {
+        trace!("[OrderHandler] Handling finished order: {:?}.", msg.order);
+        if let Order::Web(_) = msg.order {
+            if let Some(connection_handler) = &self.connection_handler {
+                connection_handler
+                    .try_send(connection_handler::AddNewFinishedOrder {
+                        order: msg.order,
+                        was_finished: msg.was_finished,
+                    })
+                    .map_err(|err| err.to_string())?;
+            } else {
+                error!("[OrderHandler] No connection handler.");
+            }
+            return Ok(());
+        }
+
+        if msg.was_finished {
+            if let Some(connection_handler) = &self.connection_handler {
+                connection_handler
+                    .try_send(connection_handler::AddNewFinishedOrder {
+                        order: msg.order,
+                        was_finished: msg.was_finished,
+                    })
+                    .map_err(|err| err.to_string())?;
+            } else {
+                error!("[OrderHandler] No connection handler.");
+            }
+            return Ok(());
+        }
+        Ok(())
     }
 }

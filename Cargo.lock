@@ -179,6 +179,8 @@ dependencies = [
  "futures-channel",
  "rand",
  "shared",
+ "tokio",
+ "tokio-stream",
  "tracing",
  "tracing-subscriber",
 ]
