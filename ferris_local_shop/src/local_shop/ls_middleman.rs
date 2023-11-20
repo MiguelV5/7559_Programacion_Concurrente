@@ -1,29 +1,24 @@
-use std::sync::mpsc;
 use std::sync::Arc;
 
+use actix::AsyncContext;
 use actix::{
-    dev::ContextFutureSpawner, fut::wrap_future, Actor, Addr, Context, Handler, Message,
-    StreamHandler,
+    dev::ContextFutureSpawner, fut::wrap_future, Actor, Context, Handler, Message, StreamHandler,
 };
-use actix::{ActorContext, AsyncContext};
 use shared::model::sl_message::SLMessage;
-use shared::port_binder::listener_binder::LOCALHOST;
-use tokio::task::JoinHandle;
-use tracing::{error, info, warn};
+use tokio::sync::mpsc::Sender;
+use tracing::{error, info};
 
-use actix_rt::System;
-use tokio::io::{split, WriteHalf};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::TcpListener as AsyncTcpListener;
+use tokio::io::AsyncWriteExt;
+use tokio::io::WriteHalf;
 use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::Mutex;
-use tokio_stream::wrappers::LinesStream;
 
-use super::constants::{EXIT_MSG, SS_MAX_PORT};
+use crate::local_shop::constants::CONNECTION_FINISHED;
 
 #[derive(Debug)]
 pub struct LSMiddleman {
     connected_server_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
+    tx_close_connection: Sender<String>,
 }
 
 impl Actor for LSMiddleman {
@@ -31,9 +26,13 @@ impl Actor for LSMiddleman {
 }
 
 impl LSMiddleman {
-    pub fn new(connected_server_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>) -> Self {
+    pub fn new(
+        connected_server_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
+        tx_close_connection: Sender<String>,
+    ) -> Self {
         Self {
             connected_server_write_stream,
+            tx_close_connection,
         }
     }
 }
@@ -54,9 +53,16 @@ impl StreamHandler<Result<String, std::io::Error>> for LSMiddleman {
         }
     }
 
-    fn started(&mut self, ctx: &mut Self::Context) {}
-
-    fn finished(&mut self, ctx: &mut Self::Context) {}
+    fn finished(&mut self, _: &mut Self::Context) {
+        info!("[LSMiddleman] Finished.");
+        if self
+            .tx_close_connection
+            .try_send(CONNECTION_FINISHED.to_string())
+            .is_ok()
+        {
+            info!("[LSMiddleman] Connection finished sent.");
+        }
+    }
 }
 
 #[derive(Message, Debug, PartialEq, Eq)]

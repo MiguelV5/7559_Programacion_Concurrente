@@ -57,7 +57,7 @@ pub fn start(
 }
 
 async fn start_aync(
-    data_sender: Sender<Addr<ConnectionHandlerActor>>,
+    tx_connection_addr: Sender<Addr<ConnectionHandlerActor>>,
     local_orders: Vec<Order>,
     stock: HashMap<String, Product>,
     num_workers: usize,
@@ -67,7 +67,7 @@ async fn start_aync(
     start_workers(num_workers, order_handler_addr.clone(), stock_handler_addr)?;
     let connection_handler = start_connection_handler(order_handler_addr.clone())?;
 
-    data_sender
+    tx_connection_addr
         .send(connection_handler.clone())
         .map_err(|err| LocalShopError::ActorError(err.to_string()))?;
 

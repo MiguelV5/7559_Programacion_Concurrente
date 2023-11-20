@@ -160,24 +160,6 @@ impl Handler<StartUp> for OrderHandlerActor {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct CloseSystem {}
-
-impl Handler<CloseSystem> for OrderHandlerActor {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, _: CloseSystem, _ctx: &mut Context<Self>) -> Self::Result {
-        if let Some(system) = System::try_current() {
-            info!("[OrderHandler] Closing system.");
-            system.stop();
-            return Ok(());
-        }
-        error!("[OrderHandler] Error closing system, cannot take current system.");
-        Err("Error closing system.".to_owned())
-    }
-}
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
 pub struct SendOrder {
     worker_id: usize,
 }
