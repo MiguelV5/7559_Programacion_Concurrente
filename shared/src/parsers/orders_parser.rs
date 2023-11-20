@@ -1,4 +1,4 @@
-use crate::model::order::Order;
+use crate::model::order::{LocalOrder, Order, WebOrder};
 use crate::model::stock_product::Product;
 
 use std::{
@@ -29,7 +29,7 @@ pub struct OrdersParser {
 }
 
 impl OrdersParser {
-    pub fn new(path: &str) -> Result<Self, OrdersParserError> {
+    pub fn new_local(path: &str) -> Result<Self, OrdersParserError> {
         let file =
             File::open(path).map_err(|err| OrdersParserError::CannotOpenFile(err.to_string()))?;
         let buf = BufReader::new(file);
@@ -38,7 +38,22 @@ impl OrdersParser {
             .map(|result| {
                 let line =
                     result.map_err(|err| OrdersParserError::CannotReadLine(err.to_string()))?;
-                Self::parse_line(line)
+                Self::build_local_order(line)
+            })
+            .collect::<Result<Vec<Order>, OrdersParserError>>()?;
+        Ok(OrdersParser { orders })
+    }
+
+    pub fn new_web(path: &str) -> Result<Self, OrdersParserError> {
+        let file =
+            File::open(path).map_err(|err| OrdersParserError::CannotOpenFile(err.to_string()))?;
+        let buf = BufReader::new(file);
+        let orders = buf
+            .lines()
+            .map(|result| {
+                let line =
+                    result.map_err(|err| OrdersParserError::CannotReadLine(err.to_string()))?;
+                Self::build_web_order(line)
             })
             .collect::<Result<Vec<Order>, OrdersParserError>>()?;
         Ok(OrdersParser { orders })
@@ -48,7 +63,7 @@ impl OrdersParser {
         self.orders.clone()
     }
 
-    fn parse_line(line: String) -> Result<Order, OrdersParserError> {
+    fn parse_line(line: String) -> Result<Vec<Product>, OrdersParserError> {
         let mut products = vec![];
 
         for str_product in line.split(';') {
@@ -67,7 +82,17 @@ impl OrdersParser {
             products.push(Product::new(name, quantity));
         }
 
-        Ok(Order::new(products))
+        Ok(products)
+    }
+
+    fn build_local_order(line: String) -> Result<Order, OrdersParserError> {
+        let products = Self::parse_line(line)?;
+        Ok(Order::Local(LocalOrder::new(products)))
+    }
+
+    fn build_web_order(line: String) -> Result<Order, OrdersParserError> {
+        let products = Self::parse_line(line)?;
+        Ok(Order::Web(WebOrder::new(products)))
     }
 }
 
@@ -76,107 +101,225 @@ mod tests_orders_parser {
 
     use super::*;
 
-    #[test]
-    fn test01_bad_path_err() -> Result<(), OrdersParserError> {
-        let path = "./data/test_orders_parser/test_bad_path.csv";
-        let parser = OrdersParser::new(path);
+    #[cfg(test)]
+    mod tests_local_orders_parser {
 
-        assert_eq!(
-            parser,
-            Err(OrdersParserError::CannotOpenFile(
-                "No such file or directory (os error 2)".to_string()
-            ))
-        );
-        Ok(())
-    }
+        use super::*;
 
-    #[test]
-    fn test02_orders_parser_can_read_file_with_no_lines_ok() -> Result<(), OrdersParserError> {
-        let path = "./data/test_orders_parser/test_orders_parser_no_lines.txt";
-        let parser = OrdersParser::new(path)?;
+        #[test]
+        fn test01_bad_path_err() -> Result<(), OrdersParserError> {
+            let path = "./data/test_orders_parser/test_bad_path.csv";
+            let parser = OrdersParser::new_local(path);
 
-        let read_orders = parser.get_orders();
-        let expected_orders: Vec<Order> = vec![];
+            assert_eq!(
+                parser,
+                Err(OrdersParserError::CannotOpenFile(
+                    "No such file or directory (os error 2)".to_string()
+                ))
+            );
+            Ok(())
+        }
 
-        assert_eq!(read_orders, expected_orders);
-        Ok(())
-    }
+        #[test]
+        fn test02_orders_parser_can_read_file_with_no_lines_ok() -> Result<(), OrdersParserError> {
+            let path = "./data/test_orders_parser/test_orders_parser_no_lines.txt";
+            let parser = OrdersParser::new_local(path)?;
 
-    #[test]
-    fn test03_orders_parser_can_read_a_file_with_one_order_and_one_product_ok(
-    ) -> Result<(), OrdersParserError> {
-        let path = "./data/test_orders_parser/test_orders_parser_one_order_one_product.txt";
-        let parser = OrdersParser::new(path)?;
+            let read_orders = parser.get_orders();
+            let expected_orders: Vec<Order> = vec![];
 
-        let order_1_products = vec![Product::new("Product1".to_string(), 1)];
+            assert_eq!(read_orders, expected_orders);
+            Ok(())
+        }
 
-        let read_orders = parser.get_orders();
-        let expected_orders: Vec<Order> = vec![Order::new(order_1_products)];
+        #[test]
+        fn test03_orders_parser_can_read_a_file_with_one_order_and_one_product_ok(
+        ) -> Result<(), OrdersParserError> {
+            let path = "./data/test_orders_parser/test_orders_parser_one_order_one_product.txt";
+            let parser = OrdersParser::new_local(path)?;
 
-        assert_eq!(read_orders, expected_orders);
-        Ok(())
-    }
+            let order_1_products = vec![Product::new("Product1".to_string(), 1)];
 
-    #[test]
-    fn test04_orders_parser_can_read_a_file_with_one_order_and_multiple_products_ok(
-    ) -> Result<(), OrdersParserError> {
-        let path = "./data/test_orders_parser/test_orders_parser_one_order_multiple_products.txt";
-        let parser = OrdersParser::new(path)?;
+            let read_orders = parser.get_orders();
+            let expected_orders: Vec<Order> = vec![Order::Local(LocalOrder::new(order_1_products))];
 
-        let order_1_products = vec![
-            Product::new("Product1".to_string(), 1),
-            Product::new("Product2".to_string(), 2),
-            Product::new("Product3".to_string(), 3),
-        ];
+            assert_eq!(read_orders, expected_orders);
+            Ok(())
+        }
 
-        let read_orders = parser.get_orders();
-        let expected_orders: Vec<Order> = vec![Order::new(order_1_products)];
+        #[test]
+        fn test04_orders_parser_can_read_a_file_with_one_order_and_multiple_products_ok(
+        ) -> Result<(), OrdersParserError> {
+            let path =
+                "./data/test_orders_parser/test_orders_parser_one_order_multiple_products.txt";
+            let parser = OrdersParser::new_local(path)?;
 
-        assert_eq!(read_orders, expected_orders);
-        Ok(())
-    }
+            let order_1_products = vec![
+                Product::new("Product1".to_string(), 1),
+                Product::new("Product2".to_string(), 2),
+                Product::new("Product3".to_string(), 3),
+            ];
 
-    #[test]
-    fn test05_orders_parser_can_read_a_file_with_multiple_orders_and_multiple_products_ok(
-    ) -> Result<(), OrdersParserError> {
-        let path =
+            let read_orders = parser.get_orders();
+            let expected_orders: Vec<Order> = vec![Order::Local(LocalOrder::new(order_1_products))];
+
+            assert_eq!(read_orders, expected_orders);
+            Ok(())
+        }
+
+        #[test]
+        fn test05_orders_parser_can_read_a_file_with_multiple_orders_and_multiple_products_ok(
+        ) -> Result<(), OrdersParserError> {
+            let path =
             "./data/test_orders_parser/test_orders_parser_multiple_orders_multiple_products.txt";
-        let parser = OrdersParser::new(path)?;
+            let parser = OrdersParser::new_local(path)?;
 
-        let order_1_products = vec![
-            Product::new("Product1".to_string(), 1),
-            Product::new("Product2".to_string(), 2),
-            Product::new("Product3".to_string(), 3),
-        ];
-        let order_2_products = vec![
-            Product::new("Product1".to_string(), 1),
-            Product::new("Product2".to_string(), 2),
-        ];
-        let order_3_products = vec![Product::new("Product1".to_string(), 1)];
+            let order_1_products = vec![
+                Product::new("Product1".to_string(), 1),
+                Product::new("Product2".to_string(), 2),
+                Product::new("Product3".to_string(), 3),
+            ];
+            let order_2_products = vec![
+                Product::new("Product1".to_string(), 1),
+                Product::new("Product2".to_string(), 2),
+            ];
+            let order_3_products = vec![Product::new("Product1".to_string(), 1)];
 
-        let read_orders = parser.get_orders();
-        let expected_orders: Vec<Order> = vec![
-            Order::new(order_1_products),
-            Order::new(order_2_products),
-            Order::new(order_3_products),
-        ];
+            let read_orders = parser.get_orders();
+            let expected_orders: Vec<Order> = vec![
+                Order::Local(LocalOrder::new(order_1_products)),
+                Order::Local(LocalOrder::new(order_2_products)),
+                Order::Local(LocalOrder::new(order_3_products)),
+            ];
 
-        assert_eq!(read_orders, expected_orders);
-        Ok(())
+            assert_eq!(read_orders, expected_orders);
+            Ok(())
+        }
+
+        #[test]
+        fn test06_cannot_parse_a_product_bad_file_err() -> Result<(), OrdersParserError> {
+            let path = "./data/test_orders_parser/test_orders_parser_bad_product.txt";
+            let parser = OrdersParser::new_local(path);
+
+            assert_eq!(
+                parser,
+                Err(OrdersParserError::CannotParseLine(
+                    "[OrdersParserError] Cannot parse a product.".to_string()
+                ))
+            );
+
+            Ok(())
+        }
     }
 
-    #[test]
-    fn test06_cannot_parse_a_product_bad_file_err() -> Result<(), OrdersParserError> {
-        let path = "./data/test_orders_parser/test_orders_parser_bad_product.txt";
-        let parser = OrdersParser::new(path);
+    #[cfg(test)]
+    mod tests_web_orders_parser {
 
-        assert_eq!(
-            parser,
-            Err(OrdersParserError::CannotParseLine(
-                "[OrdersParserError] Cannot parse a product.".to_string()
-            ))
-        );
+        use super::*;
 
-        Ok(())
+        #[test]
+        fn test01_bad_path_err() -> Result<(), OrdersParserError> {
+            let path = "./data/test_orders_parser/test_bad_path.csv";
+            let parser = OrdersParser::new_web(path);
+
+            assert_eq!(
+                parser,
+                Err(OrdersParserError::CannotOpenFile(
+                    "No such file or directory (os error 2)".to_string()
+                ))
+            );
+            Ok(())
+        }
+
+        #[test]
+        fn test02_orders_parser_can_read_file_with_no_lines_ok() -> Result<(), OrdersParserError> {
+            let path = "./data/test_orders_parser/test_orders_parser_no_lines.txt";
+            let parser = OrdersParser::new_web(path)?;
+
+            let read_orders = parser.get_orders();
+            let expected_orders: Vec<Order> = vec![];
+
+            assert_eq!(read_orders, expected_orders);
+            Ok(())
+        }
+
+        #[test]
+        fn test03_orders_parser_can_read_a_file_with_one_order_and_one_product_ok(
+        ) -> Result<(), OrdersParserError> {
+            let path = "./data/test_orders_parser/test_orders_parser_one_order_one_product.txt";
+            let parser = OrdersParser::new_web(path)?;
+
+            let order_1_products = vec![Product::new("Product1".to_string(), 1)];
+
+            let read_orders = parser.get_orders();
+            let expected_orders: Vec<Order> = vec![Order::Web(WebOrder::new(order_1_products))];
+
+            assert_eq!(read_orders, expected_orders);
+            Ok(())
+        }
+
+        #[test]
+        fn test04_orders_parser_can_read_a_file_with_one_order_and_multiple_products_ok(
+        ) -> Result<(), OrdersParserError> {
+            let path =
+                "./data/test_orders_parser/test_orders_parser_one_order_multiple_products.txt";
+            let parser = OrdersParser::new_web(path)?;
+
+            let order_1_products = vec![
+                Product::new("Product1".to_string(), 1),
+                Product::new("Product2".to_string(), 2),
+                Product::new("Product3".to_string(), 3),
+            ];
+
+            let read_orders = parser.get_orders();
+            let expected_orders: Vec<Order> = vec![Order::Web(WebOrder::new(order_1_products))];
+
+            assert_eq!(read_orders, expected_orders);
+            Ok(())
+        }
+
+        #[test]
+        fn test05_orders_parser_can_read_a_file_with_multiple_orders_and_multiple_products_ok(
+        ) -> Result<(), OrdersParserError> {
+            let path =
+            "./data/test_orders_parser/test_orders_parser_multiple_orders_multiple_products.txt";
+            let parser = OrdersParser::new_web(path)?;
+
+            let order_1_products = vec![
+                Product::new("Product1".to_string(), 1),
+                Product::new("Product2".to_string(), 2),
+                Product::new("Product3".to_string(), 3),
+            ];
+            let order_2_products = vec![
+                Product::new("Product1".to_string(), 1),
+                Product::new("Product2".to_string(), 2),
+            ];
+            let order_3_products = vec![Product::new("Product1".to_string(), 1)];
+
+            let read_orders = parser.get_orders();
+            let expected_orders: Vec<Order> = vec![
+                Order::Web(WebOrder::new(order_1_products)),
+                Order::Web(WebOrder::new(order_2_products)),
+                Order::Web(WebOrder::new(order_3_products)),
+            ];
+
+            assert_eq!(read_orders, expected_orders);
+            Ok(())
+        }
+
+        #[test]
+        fn test06_cannot_parse_a_product_bad_file_err() -> Result<(), OrdersParserError> {
+            let path = "./data/test_orders_parser/test_orders_parser_bad_product.txt";
+            let parser = OrdersParser::new_web(path);
+
+            assert_eq!(
+                parser,
+                Err(OrdersParserError::CannotParseLine(
+                    "[OrdersParserError] Cannot parse a product.".to_string()
+                ))
+            );
+
+            Ok(())
+        }
     }
 }
