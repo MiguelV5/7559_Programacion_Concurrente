@@ -157,7 +157,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "e_commerce"
+name = "ferris_e_commerce"
 version = "0.1.0"
 dependencies = [
  "actix",

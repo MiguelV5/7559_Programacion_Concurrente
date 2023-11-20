@@ -1,5 +1,5 @@
 pub mod constants;
-pub mod e_commerce_handler;
+pub mod handler;
 mod input_handler;
 mod order_handler;
 mod sl_communicator;

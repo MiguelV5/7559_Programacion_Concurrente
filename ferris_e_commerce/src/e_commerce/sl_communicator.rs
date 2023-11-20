@@ -13,8 +13,8 @@ use tokio::task::JoinHandle;
 use tokio_stream::wrappers::LinesStream;
 use tracing::{error, info, warn};
 
-use crate::ec::constants::EXIT_MSG;
-use crate::ec::order_handler::AddSLMiddlemanAddr;
+use crate::e_commerce::constants::EXIT_MSG;
+use crate::e_commerce::order_handler::AddSLMiddlemanAddr;
 use shared::port_binder::listener_binder::LOCALHOST;
 
 use super::order_handler::OrderHandler;

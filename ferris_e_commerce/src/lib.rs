@@ -1,11 +1,11 @@
 //! # FerrisCommerce - Modulo de servidores e_commerce
 //!
 
-pub mod ec;
+pub mod e_commerce;
 
 use std::{error::Error, fmt};
 
-use ec::constants::DEFAULT_ORDERS_FILEPATH;
+use e_commerce::constants::DEFAULT_ORDERS_FILEPATH;
 use tracing::{error, info};
 
 #[derive(Debug)]
@@ -75,7 +75,7 @@ pub fn run() -> Result<(), EcommerceError> {
     let (servers_listening_port, locals_listening_port, orders_path) = parse_args()?;
     info!("Starting e_commerce");
 
-    ec::e_commerce_handler::start(&orders_path, servers_listening_port, locals_listening_port)
+    e_commerce::handler::start(&orders_path, servers_listening_port, locals_listening_port)
         .map_err(|err| EcommerceError::InternalError(err.to_string()))?;
 
     Ok(())

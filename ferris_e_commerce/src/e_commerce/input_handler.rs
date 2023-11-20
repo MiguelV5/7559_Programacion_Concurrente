@@ -1,6 +1,6 @@
 use std::{net::TcpStream, sync::mpsc};
 
-use crate::ec::constants::PUSH_ORDERS_MSG;
+use crate::e_commerce::constants::PUSH_ORDERS_MSG;
 
 use super::constants::EXIT_MSG;
 use super::order_handler::OrderHandler;
