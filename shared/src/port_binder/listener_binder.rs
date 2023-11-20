@@ -2,6 +2,7 @@
 //!
 
 use std::{error::Error, fmt, io::ErrorKind, net::TcpListener as StdTcpListener};
+use tokio::net::TcpListener as AsyncTcpListener;
 
 pub const LOCALHOST: &str = "127.0.0.1";
 pub const MAX_PORT_RANGE_SIZE: u16 = 100;
@@ -15,7 +16,7 @@ pub enum PortBindingError {
 
 impl fmt::Display for PortBindingError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\n    {:?}\n", self)
+        write!(f, "{:?}", self)
     }
 }
 
@@ -61,6 +62,32 @@ pub fn try_bind_listener(
         } else {
             current_port = update_port(current_port, max_port)?;
             listener = StdTcpListener::bind(format!("{}:{}", LOCALHOST, current_port));
+        }
+    }
+    let resulting_listener = listener?;
+
+    Ok((
+        resulting_listener,
+        format!("{}:{}", LOCALHOST, current_port),
+    ))
+}
+
+pub async fn async_try_bind_listener(
+    first_port: u16,
+    max_port: u16,
+) -> Result<(AsyncTcpListener, String), Box<dyn Error>> {
+    check_port_range(first_port, max_port)?;
+
+    let mut listener = AsyncTcpListener::bind(format!("{}:{}", LOCALHOST, first_port)).await;
+
+    let mut current_port = first_port;
+
+    while let Err(bind_err) = listener {
+        if bind_err.kind() != ErrorKind::AddrInUse {
+            return Err(Box::new(bind_err));
+        } else {
+            current_port = update_port(current_port, max_port)?;
+            listener = AsyncTcpListener::bind(format!("{}:{}", LOCALHOST, current_port)).await;
         }
     }
     let resulting_listener = listener?;

@@ -16,7 +16,7 @@ pub enum EcommerceError {
 
 impl fmt::Display for EcommerceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\n    {:?}\n", self)
+        write!(f, "{:?}", self)
     }
 }
 impl Error for EcommerceError {}

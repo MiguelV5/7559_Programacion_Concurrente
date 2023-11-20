@@ -3,46 +3,36 @@ use actix::prelude::*;
 use shared::{model::order::Order, parsers::orders_parser::OrdersParser};
 use std::error::Error;
 use std::sync::mpsc::channel;
-use std::thread::JoinHandle;
 use tracing::error;
 
 pub fn start(orders_file_path: &str) -> Result<(), Box<dyn Error>> {
     let orders = parse_given_orders(orders_file_path)?;
 
     System::new().block_on(async {
-        let mut handles = Vec::new();
-
         let (tx_from_input_to_sl, rx_from_input_to_sl) = channel::<String>();
         let (tx_from_input_to_ss, rx_from_input_to_ss) = channel::<String>();
 
         let order_handler = OrderHandler::new(&orders).start();
-        handles.push(sl_communicator::setup_locals_connection(
+        // ... connection handler
+        let locals_handle = sl_communicator::setup_local_shops_connections(
             order_handler.clone(),
             rx_from_input_to_sl,
-        ));
-        // handles.push(ss_communicator::setup_servers_connection(rx_from_ss));
+        );
+        let servers_handle =
+            ss_communicator::setup_servers_connections(order_handler.clone(), rx_from_input_to_ss);
 
-        handles.push(input_handler::setup_input_listener(
+        let input_handle = input_handler::setup_input_listener(
             order_handler,
             tx_from_input_to_sl,
             tx_from_input_to_ss,
-        ));
+        );
 
-        join_handles(handles);
+        let _ = locals_handle.await;
+        let _ = servers_handle.await;
+        let _ = input_handle.join();
     });
 
     Ok(())
-}
-
-fn join_handles(handles: Vec<JoinHandle<()>>) {
-    for handle in handles {
-        match handle.join() {
-            Ok(_) => {}
-            Err(_) => {
-                error!("Error joining thread");
-            }
-        }
-    }
 }
 
 fn parse_given_orders(orders_file_path: &str) -> Result<Vec<Order>, Box<dyn Error>> {

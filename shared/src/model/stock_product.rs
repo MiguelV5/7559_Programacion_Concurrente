@@ -9,7 +9,7 @@ pub enum ProductError {
 
 impl fmt::Display for ProductError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\n    {:?}\n", self)
+        write!(f, "{:?}", self)
     }
 }
 

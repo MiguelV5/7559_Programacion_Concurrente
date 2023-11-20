@@ -17,7 +17,7 @@ pub enum OrdersParserError {
 
 impl fmt::Display for OrdersParserError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\n    {:?}\n", self)
+        write!(f, "{:?}", self)
     }
 }
 

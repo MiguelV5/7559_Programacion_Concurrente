@@ -1,12 +1,13 @@
-use std::sync::mpsc;
+use std::{net::TcpStream, sync::mpsc};
 
-use crate::ec::constants::PUSH_ORDERS_MSG;
+use crate::ec::constants::{PUSH_ORDERS_MSG, SL_INITIAL_PORT, SS_INITIAL_PORT};
 
 use super::constants::EXIT_MSG;
 use super::order_handler::OrderHandler;
 use actix::prelude::*;
+use shared::port_binder::listener_binder::LOCALHOST;
 use std::thread::JoinHandle;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 pub fn setup_input_listener(
     order_pusher: Addr<OrderHandler>,
@@ -20,8 +21,33 @@ pub fn setup_input_listener(
         while let Some(Ok(line)) = reader.next() {
             if line == EXIT_MSG {
                 info!("Exit command received");
-                tx_to_sl.send(EXIT_MSG.to_string()).unwrap();
-                tx_to_ss.send(EXIT_MSG.to_string()).unwrap();
+                match tx_to_sl.send(EXIT_MSG.to_string()) {
+                    Ok(_) => {}
+                    Err(e) => error!("<<Error sending exit message to sl: {}", e),
+                }
+
+                match TcpStream::connect(format!("{}:{}", LOCALHOST, SL_INITIAL_PORT)) {
+                    Ok(s) => {
+                        info!("<<Connection to sl closed");
+                        s.shutdown(std::net::Shutdown::Both)
+                            .expect("shutdown call failed");
+                    }
+                    Err(e) => error!("<<Error connecting to sl: {}", e),
+                }
+
+                match tx_to_ss.send(EXIT_MSG.to_string()) {
+                    Ok(_) => {}
+                    Err(e) => error!("<<Error sending exit message to ss: {}", e),
+                }
+
+                match TcpStream::connect(format!("{}:{}", LOCALHOST, SS_INITIAL_PORT)) {
+                    Ok(s) => {
+                        info!("<<Connection to sl closed");
+                        s.shutdown(std::net::Shutdown::Both)
+                            .expect("shutdown call failed");
+                    }
+                    Err(e) => error!("<<Error connecting to ss: {}", e),
+                }
                 if let Some(system) = System::try_current() {
                     system.stop()
                 }

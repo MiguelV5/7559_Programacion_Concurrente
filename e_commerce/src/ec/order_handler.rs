@@ -60,3 +60,19 @@ impl Handler<AddSLMiddlemanAddr> for OrderHandler {
             .insert(msg.local_shop_id, msg.sl_middleman_addr);
     }
 }
+
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct AddSSMiddlemanAddr {
+    pub ss_middleman_addr: Addr<SSMiddleman>,
+    pub server_id: u32,
+}
+
+impl Handler<AddSSMiddlemanAddr> for OrderHandler {
+    type Result = ();
+
+    fn handle(&mut self, msg: AddSSMiddlemanAddr, _ctx: &mut Self::Context) -> Self::Result {
+        self.ss_communicators
+            .insert(msg.server_id, msg.ss_middleman_addr);
+    }
+}

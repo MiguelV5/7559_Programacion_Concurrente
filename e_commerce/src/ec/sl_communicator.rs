@@ -1,6 +1,4 @@
-use std::net::TcpListener;
 use std::sync::{mpsc, Arc};
-use std::thread::JoinHandle;
 
 use actix::{
     dev::ContextFutureSpawner, fut::wrap_future, Actor, ActorContext, Addr, Context, StreamHandler,
@@ -8,9 +6,10 @@ use actix::{
 use actix_rt::System;
 use tokio::io::{split, WriteHalf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::TcpListener as AsyncTcpListener;
 use tokio::net::TcpStream as AsyncTcpStream;
-use tokio::net::TcpStream;
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use tokio_stream::wrappers::LinesStream;
 use tracing::{error, info, warn};
 
@@ -24,8 +23,8 @@ use shared::port_binder::listener_binder;
 use super::order_handler::OrderHandler;
 
 pub struct SLMiddleman {
-    local_shop_write_stream: Arc<Mutex<WriteHalf<TcpStream>>>,
-    local_shop_id: u32,
+    connected_local_shop_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
+    connected_local_shop_id: u32,
 }
 
 impl Actor for SLMiddleman {
@@ -43,7 +42,7 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
                 info!(" Received msg: {}", msg);
                 let response = msg + "\n";
 
-                let writer = self.local_shop_write_stream.clone();
+                let writer = self.connected_local_shop_write_stream.clone();
                 wrap_future::<_, Self>(async move {
                     if writer
                         .lock()
@@ -67,48 +66,45 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
     }
 
     fn finished(&mut self, ctx: &mut Self::Context) {
-        info!("Local shop {} disconnected", self.local_shop_id);
+        info!("Local shop {} disconnected", self.connected_local_shop_id);
         ctx.stop();
     }
 }
 
 // ====================================================================
 
-pub fn setup_locals_connection(
+pub fn setup_local_shops_connections(
     order_handler: Addr<OrderHandler>,
     rx_from_input: mpsc::Receiver<String>,
 ) -> JoinHandle<()> {
-    std::thread::spawn(move || {
-        if let Err(e) = handle_incoming_locals(order_handler, rx_from_input) {
+    actix::spawn(async {
+        if let Err(e) = handle_incoming_locals(order_handler, rx_from_input).await {
             error!("{}", e);
         };
     })
 }
 
-fn handle_incoming_locals(
+async fn handle_incoming_locals(
     order_handler: Addr<OrderHandler>,
     rx_from_input: mpsc::Receiver<String>,
 ) -> Result<(), String> {
     if let Ok((listener, listener_addr)) =
-        listener_binder::try_bind_listener(SL_INITIAL_PORT, SL_MAX_PORT)
+        listener_binder::async_try_bind_listener(SL_INITIAL_PORT, SL_MAX_PORT).await
     {
-        info!("Iniciado listener en {}", listener_addr);
-        listener
-            .set_nonblocking(true)
-            .map_err(|err| err.to_string())?;
+        info!("Starting listener for Clients in {}", listener_addr);
 
-        handle_communication_loop(rx_from_input, listener, order_handler)
+        handle_communication_loop(rx_from_input, listener, order_handler).await
     } else {
         if let Some(system) = System::try_current() {
             system.stop()
         }
-        Err("Error al intentar bindear el puerto".to_string())
+        Err("Error binding port".to_string())
     }
 }
 
-fn handle_communication_loop(
+async fn handle_communication_loop(
     rx_from_input: mpsc::Receiver<String>,
-    listener: TcpListener,
+    listener: AsyncTcpListener,
     order_handler: Addr<OrderHandler>,
 ) -> Result<(), String> {
     let mut local_shop_id = 0;
@@ -117,28 +113,26 @@ fn handle_communication_loop(
             return Ok(());
         }
 
-        if let Ok((stream, stream_addr)) = listener.accept() {
-            if let Ok(async_stream) = AsyncTcpStream::from_std(stream) {
-                info!(" [{:?}] Cliente conectado", stream_addr);
-                handle_connected_local_shop(async_stream, &order_handler, local_shop_id);
-                local_shop_id += 1;
-            }
-        }
+        if let Ok((stream, stream_addr)) = listener.accept().await {
+            info!(" [{:?}] Client connected", stream_addr);
+            handle_connected_local_shop(stream, &order_handler, local_shop_id);
+            local_shop_id += 1;
+        };
     }
 }
 
 fn handle_connected_local_shop(
-    async_stream: AsyncTcpStream,
+    stream: AsyncTcpStream,
     order_handler: &Addr<OrderHandler>,
     local_shop_id: u32,
 ) {
-    let (read_half, write_half) = split(async_stream);
+    let (read_half, write_half) = split(stream);
 
     let sl_middleman_addr = SLMiddleman::create(|ctx| {
         SLMiddleman::add_stream(LinesStream::new(BufReader::new(read_half).lines()), ctx);
         SLMiddleman {
-            local_shop_write_stream: Arc::new(Mutex::new(write_half)),
-            local_shop_id,
+            connected_local_shop_write_stream: Arc::new(Mutex::new(write_half)),
+            connected_local_shop_id: local_shop_id,
         }
     });
 
