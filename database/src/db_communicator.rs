@@ -99,7 +99,7 @@ impl StreamHandler<Result<String, std::io::Error>> for DBServer {
 
                     let writer = self.db_write_stream.clone();
                     wrap_future::<_, Self>(async move {
-                        if let Ok(_) = writer.lock().await.write_all(response.as_bytes()).await {
+                        if let Ok(_) = writer.lock().await.write_all(response).await {
                             info!("Response sent successfully: {:?}", response);
                         } else {
                             error!("Error sending response: {:?}", response);
