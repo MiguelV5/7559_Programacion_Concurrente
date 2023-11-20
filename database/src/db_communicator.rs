@@ -39,6 +39,10 @@ impl StreamHandler<Result<String, std::io::Error>> for DBServer {
                         server_addr: ctx.address(),
                     });
                 }
+                else {
+                    error!("Error in received msg: {}", msg);
+                    ctx.stop();
+                }
             }
             Err(e) => {
                 error!("Error in received msg: {}", e);
