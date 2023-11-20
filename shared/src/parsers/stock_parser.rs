@@ -22,7 +22,7 @@ pub struct StockParser {
 
 impl fmt::Display for StockParserError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\n    {:#?}\n", self)
+        write!(f, "{:?}", self)
     }
 }
 
