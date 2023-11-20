@@ -50,16 +50,26 @@ fn handle_request(
                 )
             }
             RequestType::GetOne => {
-                let product;
                 if let DatabaseMessageBody::OrderId(order_id) = request.body {
-                    product = pending_deliveries.get_delivery(order_id);
-                    DatabaseResponse::new(
-                        ResponseStatus::Ok,
-                        DatabaseMessageBody::ProductsToDelivery(vec![product.unwrap()]),
-                    )
+                    let product = match pending_deliveries.get_delivery(order_id) {
+                        Some(product) => {
+                            DatabaseResponse::new(
+                                ResponseStatus::Ok,
+                                DatabaseMessageBody::ProductsToDelivery(vec![product]),
+                            )
+                        }
+                        None => {
+                            DatabaseResponse::new(
+                                ResponseStatus::Error("Not found product to delivery".to_string()),
+                                DatabaseMessageBody::None,
+                            )
+                        }
+                    };
+                    product
+                    
                 } else {
                     DatabaseResponse::new(
-                        ResponseStatus::Error("Not found product to delivery".to_string()),
+                        ResponseStatus::Error("Bad request".to_string()),
                         DatabaseMessageBody::None,
                     )
                 }
@@ -132,7 +142,13 @@ impl StreamHandler<Result<String, std::io::Error>> for DBServer {
                 if let Ok(request) = serde_json::from_slice::<DatabaseRequest>(msg.as_bytes()) {
                     info!("Received Request: {:?}", request);
                     let response = handle_request(request, &mut self.pending_deliveries, &mut self.global_stock);
-                    let response_json = serde_json::to_string(&response).unwrap();
+                    let response_json = match serde_json::to_string(&response) {
+                        Ok(response_json) => response_json,
+                        Err(e) => {
+                            error!("Error serializing response: {:?}", e);
+                            return;
+                        }
+                    };
 
                     let writer = self.db_write_stream.clone();
                     wrap_future::<_, Self>(async move {
