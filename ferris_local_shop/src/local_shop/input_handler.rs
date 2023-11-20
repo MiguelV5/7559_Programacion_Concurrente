@@ -1,10 +1,11 @@
 use super::connection_handler::ConnectionHandlerActor;
-use super::constants::EXIT_MSG;
 use super::order_handler::OrderHandlerActor;
 use crate::local_shop::connection_handler;
 use crate::local_shop::constants::*;
 use crate::local_shop::order_handler;
 use actix::prelude::*;
+use shared::model::constants::EXIT_MSG;
+use shared::model::constants::START_ORDERS_MSG;
 use std::error::Error;
 use std::fmt;
 use std::sync::mpsc::Receiver;

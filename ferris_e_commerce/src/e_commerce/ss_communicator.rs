@@ -6,6 +6,9 @@ use actix::{
     StreamHandler,
 };
 use actix::{ActorContext, AsyncContext};
+use shared::model::constants::EXIT_MSG;
+use shared::model::constants::SS_INITIAL_PORT;
+use shared::model::constants::SS_MAX_PORT;
 use shared::port_binder::listener_binder::LOCALHOST;
 use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
@@ -20,8 +23,7 @@ use tokio_stream::wrappers::LinesStream;
 
 use crate::e_commerce::connection_handler::AddSSMiddlemanAddr;
 
-use super::constants::{EXIT_MSG, SS_MAX_PORT};
-use super::{connection_handler::ConnectionHandler, constants::SS_INITIAL_PORT};
+use super::connection_handler::ConnectionHandler;
 
 pub struct SSMiddleman {
     connected_server_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
@@ -72,10 +74,6 @@ impl StreamHandler<Result<String, std::io::Error>> for SSMiddleman {
                 error!(" Error in received msg: {}", e);
             }
         }
-    }
-
-    fn finished(&mut self, ctx: &mut Self::Context) {
-        ctx.stop();
     }
 }
 

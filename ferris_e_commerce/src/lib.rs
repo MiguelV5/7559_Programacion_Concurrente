@@ -5,7 +5,8 @@ pub mod e_commerce;
 
 use std::{error::Error, fmt};
 
-use e_commerce::constants::{DEFAULT_ORDERS_FILEPATH, SL_INITIAL_PORT, SS_INITIAL_PORT};
+use e_commerce::constants::DEFAULT_ORDERS_FILEPATH;
+use shared::model::constants::{SL_INITIAL_PORT, SS_INITIAL_PORT};
 use tracing::{error, info};
 
 #[derive(Debug)]

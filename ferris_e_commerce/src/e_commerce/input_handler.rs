@@ -1,11 +1,11 @@
 use std::{net::TcpStream, sync::mpsc};
 
-use crate::e_commerce::constants::PUSH_ORDERS_MSG;
-
-use super::constants::EXIT_MSG;
 use super::order_handler::OrderHandler;
 use actix::prelude::*;
-use shared::port_binder::listener_binder::LOCALHOST;
+use shared::{
+    model::constants::{EXIT_MSG, START_ORDERS_MSG},
+    port_binder::listener_binder::LOCALHOST,
+};
 use std::thread::JoinHandle;
 use tracing::{info, warn};
 
@@ -39,7 +39,7 @@ pub fn setup_input_listener(
                     system.stop()
                 }
                 break;
-            } else if line == PUSH_ORDERS_MSG {
+            } else if line == START_ORDERS_MSG {
                 info!("Push command received");
                 if let Ok(_send_res) = order_pusher.try_send(super::order_handler::PushOrders {}) {
                     info!("PushOrders message sent successfully");
@@ -49,7 +49,7 @@ pub fn setup_input_listener(
             } else {
                 warn!(
                     "Unknown command. Available commands: {}, {}.",
-                    EXIT_MSG, PUSH_ORDERS_MSG
+                    EXIT_MSG, START_ORDERS_MSG
                 );
             }
         }

@@ -36,21 +36,28 @@ Puede encontrar el enunciado [aquí](https://concurrentes-fiuba.github.io/2C2023
 
 ## Ejecución:
 
-Tanto el e-commerce como los locales físicos se pueden ejecutar de la siguiente manera:
+### E-commerce
 
 ```bash
-cargo run -p <e_commerce|local_shop> -- <orders file>
+cargo run -p e_commerce -- -ss <servers_listening_port> -sl <locals_listening_port>  [-o <orders_file_path>]
 ```
+
+### Local shop
+
+```bash
+cargo run -p ferris_local_shop -- -o <orders_file_path> -s <stock_file_path> -w <num_workers>
+```
+
+### Comandos
+
 Ambos a su vez proveen comandos para interactuar con el sistema durante la ejecución:
 - e_commerce:
-    - `exit`: cierra el e-commerce de forma segura.
-    - `push`: comienza el procesado de las ordenes recibidas.
-    - `list_locals`: lista los locales y su estado actual (conectado/desconectado).
+    - `q`: cierra el e-commerce de forma segura.
+    - `s`: comienza el procesado de las ordenes recibidas.
 - local_shop:
-    - `exit`: cierra el local de forma segura.
-    - `push`: comienza el procesado de las ordenes recibidas.
-    - `cc`: cierra la conexión con el e-commerce. El proceso sigue activo.
-    - `rc`: reestablece la conexión con el e-commerce (las conexiones se intentan reestablecer automaticamente cada 20 segundos).
+    - `q`: cierra el local de forma segura.
+    - `s`: comienza el procesado de las ordenes recibidas.
+    - `cc`: cierra la conexión con el e-commerce. El proceso sigue activo (las conexiones se intentan reestablecer automaticamente cada 10 segundos).
 
 ## Tests
 

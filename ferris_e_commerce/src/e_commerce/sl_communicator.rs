@@ -4,6 +4,7 @@ use actix::{
     dev::ContextFutureSpawner, fut::wrap_future, Actor, ActorContext, Addr, Context, StreamHandler,
 };
 use actix_rt::System;
+use shared::model::constants::EXIT_MSG;
 use tokio::io::{split, WriteHalf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener as AsyncTcpListener;
@@ -14,7 +15,6 @@ use tokio_stream::wrappers::LinesStream;
 use tracing::{error, info, warn};
 
 use crate::e_commerce::connection_handler::{AddSLMiddlemanAddr, ConnectionHandler};
-use crate::e_commerce::constants::EXIT_MSG;
 use shared::port_binder::listener_binder::LOCALHOST;
 
 pub struct SLMiddleman {
@@ -54,10 +54,6 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
                 error!(" Error in received msg: {}", e);
             }
         }
-    }
-
-    fn finished(&mut self, ctx: &mut Self::Context) {
-        ctx.stop();
     }
 }
 

@@ -5,16 +5,16 @@ use serde::{Deserialize, Serialize};
 use super::order::Order;
 
 #[derive(Debug)]
-pub enum SLMessageError {
+pub enum LSMessageError {
     ErrorParsing(String),
 }
 
-impl fmt::Display for SLMessageError {
+impl fmt::Display for LSMessageError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
-impl Error for SLMessageError {}
+impl Error for LSMessageError {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum LSMessage {
@@ -36,11 +36,11 @@ pub enum LSMessage {
 }
 
 impl LSMessage {
-    pub fn from_string(msg: &str) -> Result<Self, SLMessageError> {
-        serde_json::from_str(msg).map_err(|err| SLMessageError::ErrorParsing(err.to_string()))
+    pub fn from_string(msg: &str) -> Result<Self, LSMessageError> {
+        serde_json::from_str(msg).map_err(|err| LSMessageError::ErrorParsing(err.to_string()))
     }
 
-    pub fn to_string(&self) -> Result<String, SLMessageError> {
-        serde_json::to_string(self).map_err(|err| SLMessageError::ErrorParsing(err.to_string()))
+    pub fn to_string(&self) -> Result<String, LSMessageError> {
+        serde_json::to_string(self).map_err(|err| LSMessageError::ErrorParsing(err.to_string()))
     }
 }

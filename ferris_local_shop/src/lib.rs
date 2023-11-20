@@ -76,7 +76,7 @@ fn parse_args() -> Result<(String, String, usize), LocalShopError> {
         } else {
             error!("[LocalShop] Invalid argument: {}", arg[0].to_owned());
             warn!(
-                "Usage: cargo run -- -o <orders_file_path> -s <stock_file_path> -w <num_workers>"
+                "Usage: cargo run -p ferris_local_shop -- -o <orders_file_path> -s <stock_file_path> -w <num_workers>"
             );
             return Err(LocalShopError::ArgsParsingError(String::from(
                 "Invalid argument.",

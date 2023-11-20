@@ -7,6 +7,8 @@ use crate::local_shop::ls_middleman::LSMiddleman;
 use actix::Actor;
 use actix::Addr;
 use actix::AsyncContext;
+use shared::model::constants::SL_INITIAL_PORT;
+use shared::model::constants::SL_MAX_PORT;
 use shared::port_binder::listener_binder::LOCALHOST;
 use tokio::io::split;
 use tokio::io::AsyncBufReadExt;
@@ -24,7 +26,7 @@ pub fn handle_connection_with_e_commerce(
 ) -> JoinHandle<Result<(), String>> {
     actix::spawn(async move {
         loop {
-            for curr_port in SS_INITIAL_PORT..SS_MAX_PORT + 1 {
+            for curr_port in SL_INITIAL_PORT..SL_MAX_PORT + 1 {
                 let addr = format!("{}:{}", LOCALHOST, curr_port);
 
                 if let Ok(stream) = AsyncTcpStream::connect(addr.clone()).await {
