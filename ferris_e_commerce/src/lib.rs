@@ -5,7 +5,7 @@ pub mod e_commerce;
 
 use std::{error::Error, fmt};
 
-use e_commerce::constants::DEFAULT_ORDERS_FILEPATH;
+use e_commerce::constants::{DEFAULT_ORDERS_FILEPATH, SL_INITIAL_PORT, SS_INITIAL_PORT};
 use tracing::{error, info};
 
 #[derive(Debug)]
@@ -30,44 +30,50 @@ fn init_logger() {
 }
 
 fn parse_args() -> Result<(u16, u16, String), EcommerceError> {
-    let args: Vec<String> = std::env::args().collect();
+    let mut args: Vec<String> = std::env::args().collect();
+    args.remove(0);
     let args_quantity = args.len();
-    if args_quantity < 3 {
-        error!("Usage: cargo run -p e_commerce -- <servers_listening_port> <locals_listening_port>  [<orders_file_path>]");
-        Err(EcommerceError::ArgsParsingError(String::from(
+
+    if args_quantity < 4 || args_quantity % 2 != 0 {
+        error!("Usage: cargo run -p e_commerce -- -ss <servers_listening_port> -sl <locals_listening_port>  [-o <orders_file_path>]");
+        return Err(EcommerceError::ArgsParsingError(String::from(
             "Too few arguments",
-        )))
-    } else if args_quantity == 3 {
-        let servers_listening_port = args[1]
-            .parse::<u16>()
-            .map_err(|_| EcommerceError::ArgsParsingError(String::from("Invalid port number")))?;
-        let locals_listening_port = args[2]
-            .parse::<u16>()
-            .map_err(|_| EcommerceError::ArgsParsingError(String::from("Invalid port number")))?;
-        Ok((
-            servers_listening_port,
-            locals_listening_port,
-            String::from(DEFAULT_ORDERS_FILEPATH),
-        ))
-    } else if args_quantity == 4 {
-        let servers_listening_port = args[1]
-            .parse::<u16>()
-            .map_err(|_| EcommerceError::ArgsParsingError(String::from("Invalid port number")))?;
-        let locals_listening_port = args[2]
-            .parse::<u16>()
-            .map_err(|_| EcommerceError::ArgsParsingError(String::from("Invalid port number")))?;
-        let orders_file_path = args[3].clone();
-        Ok((
-            servers_listening_port,
-            locals_listening_port,
-            orders_file_path,
-        ))
-    } else {
+        )));
+    } else if args_quantity > 6 {
         error!("Too many arguments were given\n Usage: cargo run -p e_commerce -- [<orders_file_path>]");
-        Err(EcommerceError::ArgsParsingError(String::from(
+        return Err(EcommerceError::ArgsParsingError(String::from(
             "Too many arguments",
-        )))
+        )));
     }
+
+    let mut servers_listening_port = SS_INITIAL_PORT;
+    let mut locals_listening_port = SL_INITIAL_PORT;
+    let mut orders_file_path = String::from(DEFAULT_ORDERS_FILEPATH);
+
+    for dual_arg in args.chunks_exact(2) {
+        if dual_arg[0] == "-ss" {
+            servers_listening_port = dual_arg[1].parse::<u16>().map_err(|_| {
+                EcommerceError::ArgsParsingError(String::from("Invalid port number"))
+            })?;
+        } else if dual_arg[0] == "-sl" {
+            locals_listening_port = dual_arg[1].parse::<u16>().map_err(|_| {
+                EcommerceError::ArgsParsingError(String::from("Invalid port number"))
+            })?;
+        } else if dual_arg[0] == "-o" {
+            orders_file_path = dual_arg[1].clone();
+        } else {
+            error!("Usage: cargo run -p e_commerce -- -ss <servers_listening_port> -sl <locals_listening_port>  [-o <orders_file_path>]");
+            return Err(EcommerceError::ArgsParsingError(String::from(
+                "Invalid argument",
+            )));
+        }
+    }
+
+    Ok((
+        servers_listening_port,
+        locals_listening_port,
+        orders_file_path,
+    ))
 }
 
 pub fn run() -> Result<(), EcommerceError> {

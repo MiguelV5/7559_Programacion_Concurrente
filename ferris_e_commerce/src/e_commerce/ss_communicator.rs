@@ -18,9 +18,10 @@ use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::LinesStream;
 
+use crate::e_commerce::connection_handler::AddSSMiddlemanAddr;
+
 use super::constants::{EXIT_MSG, SS_MAX_PORT};
-use super::order_handler::AddSSMiddlemanAddr;
-use super::{constants::SS_INITIAL_PORT, order_handler::OrderHandler};
+use super::{connection_handler::ConnectionHandler, constants::SS_INITIAL_PORT};
 
 pub struct SSMiddleman {
     connected_server_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
@@ -29,10 +30,6 @@ pub struct SSMiddleman {
 
 impl Actor for SSMiddleman {
     type Context = Context<Self>;
-
-    fn started(&mut self, _ctx: &mut Self::Context) {
-        warn!("SSMiddlemanActor started");
-    }
 }
 
 #[derive(Message)]
@@ -78,7 +75,6 @@ impl StreamHandler<Result<String, std::io::Error>> for SSMiddleman {
     }
 
     fn finished(&mut self, ctx: &mut Self::Context) {
-        info!("External server {} disconnected", self.connected_server_id);
         ctx.stop();
     }
 }
@@ -86,23 +82,23 @@ impl StreamHandler<Result<String, std::io::Error>> for SSMiddleman {
 // ====================================================================
 
 pub fn setup_servers_connections(
-    order_handler: Addr<OrderHandler>,
+    connection_handler: Addr<ConnectionHandler>,
     servers_listening_port: u16,
     rx_from_input: mpsc::Receiver<String>,
 ) -> JoinHandle<()> {
     actix::spawn(async move {
-        if let Err(e) = try_connect_to_servers(order_handler.clone()).await {
+        if let Err(e) = try_connect_to_servers(connection_handler.clone()).await {
             warn!("{}", e);
         }
         if let Err(e) =
-            handle_incoming_servers(order_handler, servers_listening_port, rx_from_input).await
+            handle_incoming_servers(connection_handler, servers_listening_port, rx_from_input).await
         {
             error!("Error handling incoming servers: {}", e);
         }
     })
 }
 
-async fn try_connect_to_servers(order_handler: Addr<OrderHandler>) -> Result<(), String> {
+async fn try_connect_to_servers(connection_handler: Addr<ConnectionHandler>) -> Result<(), String> {
     let mut current_port = SS_INITIAL_PORT;
     let mut could_connect_any = false;
     while current_port <= SS_MAX_PORT {
@@ -128,13 +124,13 @@ async fn try_connect_to_servers(order_handler: Addr<OrderHandler>) -> Result<(),
                     }
                 }
             };
-            match order_handler.try_send(AddSSMiddlemanAddr {
+            match connection_handler.try_send(AddSSMiddlemanAddr {
                 ss_middleman_addr: ss_middleman,
                 server_id: (current_port - SS_INITIAL_PORT) as u32,
             }) {
                 Ok(_) => {}
                 Err(_) => {
-                    error!("Error sending AddSSMiddlemanAddr to order handler");
+                    error!("Error sending AddSSMiddlemanAddr to ConnectionHandler");
                     if let Some(system) = System::try_current() {
                         system.stop();
                     }
@@ -152,7 +148,7 @@ async fn try_connect_to_servers(order_handler: Addr<OrderHandler>) -> Result<(),
 }
 
 async fn handle_incoming_servers(
-    order_handler: Addr<OrderHandler>,
+    connection_handler: Addr<ConnectionHandler>,
     servers_listening_port: u16,
     rx_from_input: mpsc::Receiver<String>,
 ) -> Result<(), String> {
@@ -164,7 +160,7 @@ async fn handle_incoming_servers(
             LOCALHOST, servers_listening_port
         );
 
-        handle_communication_loop(rx_from_input, listener, order_handler).await
+        handle_communication_loop(rx_from_input, listener, connection_handler).await
     } else {
         if let Some(system) = System::try_current() {
             system.stop()
@@ -176,7 +172,7 @@ async fn handle_incoming_servers(
 async fn handle_communication_loop(
     rx_from_input: mpsc::Receiver<String>,
     listener: AsyncTcpListener,
-    order_handler: Addr<OrderHandler>,
+    connection_handler: Addr<ConnectionHandler>,
 ) -> Result<(), String> {
     let mut server_id = 0;
     loop {
@@ -186,7 +182,7 @@ async fn handle_communication_loop(
 
         if let Ok((stream, stream_addr)) = listener.accept().await {
             info!(" [{:?}] Server connected", stream_addr);
-            handle_connected_server(stream, &order_handler, server_id);
+            handle_connected_server(stream, &connection_handler, server_id);
             server_id += 1;
         };
     }
@@ -194,7 +190,7 @@ async fn handle_communication_loop(
 
 fn handle_connected_server(
     async_stream: AsyncTcpStream,
-    order_handler: &Addr<OrderHandler>,
+    connection_handler: &Addr<ConnectionHandler>,
     server_id: u32,
 ) {
     let (reader, writer) = split(async_stream);
@@ -214,13 +210,13 @@ fn handle_connected_server(
             }
         }
     };
-    match order_handler.try_send(AddSSMiddlemanAddr {
+    match connection_handler.try_send(AddSSMiddlemanAddr {
         ss_middleman_addr: ss_middleman,
         server_id,
     }) {
         Ok(_) => {}
         Err(_) => {
-            error!("Error sending AddSSMiddlemanAddr to order handler");
+            error!("Error sending AddSSMiddlemanAddr to ConnectionHandler");
             if let Some(system) = System::try_current() {
                 system.stop();
             }

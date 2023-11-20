@@ -1,22 +1,19 @@
-use std::collections::HashMap;
-
 use actix::{Actor, Addr, Context, Handler, Message};
 use shared::model::order::Order;
 use tracing::warn;
 
-use super::{sl_communicator::SLMiddleman, ss_communicator::SSMiddleman};
+use super::{connection_handler::ConnectionHandler, order_worker::OrderWorker};
 
 pub struct OrderHandler {
     orders: Vec<Order>,
-    sl_communicators: HashMap<u32, Addr<SLMiddleman>>,
-    ss_communicators: HashMap<u32, Addr<SSMiddleman>>,
+    order_workers: Vec<Addr<OrderWorker>>,
 }
 
 impl Actor for OrderHandler {
     type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
-        warn!("OrderPusherActor started");
+        warn!("OrderHandler started");
     }
 }
 
@@ -25,17 +22,14 @@ impl OrderHandler {
         let orders = orders.to_vec();
         Self {
             orders,
-            sl_communicators: HashMap::new(),
-            ss_communicators: HashMap::new(),
+            order_workers: Vec::new(),
         }
     }
 }
 
 #[derive(Message)]
 #[rtype(result = "()")]
-pub struct PushOrders {
-    // order: Order,
-}
+pub struct PushOrders {}
 
 impl Handler<PushOrders> for OrderHandler {
     type Result = ();
@@ -47,32 +41,14 @@ impl Handler<PushOrders> for OrderHandler {
 
 #[derive(Message)]
 #[rtype(result = "()")]
-pub struct AddSLMiddlemanAddr {
-    pub sl_middleman_addr: Addr<SLMiddleman>,
-    pub local_shop_id: u32,
+pub struct AddOrderWorkerAddr {
+    pub order_worker_addr: Addr<OrderWorker>,
 }
 
-impl Handler<AddSLMiddlemanAddr> for OrderHandler {
+impl Handler<AddOrderWorkerAddr> for OrderHandler {
     type Result = ();
 
-    fn handle(&mut self, msg: AddSLMiddlemanAddr, _ctx: &mut Self::Context) -> Self::Result {
-        self.sl_communicators
-            .insert(msg.local_shop_id, msg.sl_middleman_addr);
-    }
-}
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct AddSSMiddlemanAddr {
-    pub ss_middleman_addr: Addr<SSMiddleman>,
-    pub server_id: u32,
-}
-
-impl Handler<AddSSMiddlemanAddr> for OrderHandler {
-    type Result = ();
-
-    fn handle(&mut self, msg: AddSSMiddlemanAddr, _ctx: &mut Self::Context) -> Self::Result {
-        self.ss_communicators
-            .insert(msg.server_id, msg.ss_middleman_addr);
+    fn handle(&mut self, msg: AddOrderWorkerAddr, _ctx: &mut Self::Context) -> Self::Result {
+        self.order_workers.push(msg.order_worker_addr);
     }
 }

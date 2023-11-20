@@ -13,11 +13,9 @@ use tokio::task::JoinHandle;
 use tokio_stream::wrappers::LinesStream;
 use tracing::{error, info, warn};
 
+use crate::e_commerce::connection_handler::{AddSLMiddlemanAddr, ConnectionHandler};
 use crate::e_commerce::constants::EXIT_MSG;
-use crate::e_commerce::order_handler::AddSLMiddlemanAddr;
 use shared::port_binder::listener_binder::LOCALHOST;
-
-use super::order_handler::OrderHandler;
 
 pub struct SLMiddleman {
     connected_local_shop_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
@@ -26,10 +24,6 @@ pub struct SLMiddleman {
 
 impl Actor for SLMiddleman {
     type Context = Context<Self>;
-
-    fn started(&mut self, _ctx: &mut Self::Context) {
-        warn!("SLMiddlemanActor started");
-    }
 }
 
 impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
@@ -63,7 +57,6 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
     }
 
     fn finished(&mut self, ctx: &mut Self::Context) {
-        info!("Local shop {} disconnected", self.connected_local_shop_id);
         ctx.stop();
     }
 }
@@ -71,13 +64,13 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
 // ====================================================================
 
 pub fn setup_local_shops_connections(
-    order_handler: Addr<OrderHandler>,
+    connection_handler: Addr<ConnectionHandler>,
     locals_listening_port: u16,
     rx_from_input: mpsc::Receiver<String>,
 ) -> JoinHandle<()> {
     actix::spawn(async move {
         if let Err(e) =
-            handle_incoming_locals(order_handler, locals_listening_port, rx_from_input).await
+            handle_incoming_locals(connection_handler, locals_listening_port, rx_from_input).await
         {
             error!("{}", e);
         };
@@ -85,7 +78,7 @@ pub fn setup_local_shops_connections(
 }
 
 async fn handle_incoming_locals(
-    order_handler: Addr<OrderHandler>,
+    connection_handler: Addr<ConnectionHandler>,
     locals_listening_port: u16,
     rx_from_input: mpsc::Receiver<String>,
 ) -> Result<(), String> {
@@ -97,19 +90,19 @@ async fn handle_incoming_locals(
             LOCALHOST, locals_listening_port
         );
 
-        handle_communication_loop(rx_from_input, listener, order_handler).await
+        handle_communication_loop(rx_from_input, listener, connection_handler).await
     } else {
         if let Some(system) = System::try_current() {
             system.stop()
         }
-        Err("Error binding port".to_string())
+        Err("Error binding port: Already in use, restart application".to_string())
     }
 }
 
 async fn handle_communication_loop(
     rx_from_input: mpsc::Receiver<String>,
     listener: AsyncTcpListener,
-    order_handler: Addr<OrderHandler>,
+    connection_handler: Addr<ConnectionHandler>,
 ) -> Result<(), String> {
     let mut local_shop_id = 0;
     loop {
@@ -119,7 +112,7 @@ async fn handle_communication_loop(
 
         if let Ok((stream, stream_addr)) = listener.accept().await {
             info!(" [{:?}] Client connected", stream_addr);
-            handle_connected_local_shop(stream, &order_handler, local_shop_id);
+            handle_connected_local_shop(stream, &connection_handler, local_shop_id);
             local_shop_id += 1;
         };
     }
@@ -127,7 +120,7 @@ async fn handle_communication_loop(
 
 fn handle_connected_local_shop(
     stream: AsyncTcpStream,
-    order_handler: &Addr<OrderHandler>,
+    connection_handler: &Addr<ConnectionHandler>,
     local_shop_id: u32,
 ) {
     let (read_half, write_half) = split(stream);
@@ -140,14 +133,14 @@ fn handle_connected_local_shop(
         }
     });
 
-    match order_handler.try_send(AddSLMiddlemanAddr {
+    match connection_handler.try_send(AddSLMiddlemanAddr {
         sl_middleman_addr: sl_middleman_addr.clone(),
         local_shop_id,
     }) {
         Ok(_) => {}
         Err(e) => {
             error!(
-                "Error while sending AddLocalShopStream to OrderHandler: {}",
+                "Error while sending AddLocalShopStream to ConnectionHandler: {}",
                 e
             );
             if let Some(system) = System::try_current() {
