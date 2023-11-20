@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::{product_to_delivery::ProductToDelivery, order::Order};
+use super::{order::Order, product_to_delivery::ProductToDelivery};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum DatabaseMessageBody {
     OrderId(i32),
     ProductName(String),

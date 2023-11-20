@@ -1,11 +1,8 @@
-use std::{
-    collections::HashMap,
-    error::Error,
-};
+use std::{collections::HashMap, error::Error};
 
-use shared::model::{stock_product::{Product, ProductError}, order::Order};
+use shared::model::{order::Order, stock_product::ProductError};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GlobalStock {
     //Global stock is a hashmap of local shop stocks, each local shop is a hashmap of products and it's quantity
     global_stock: HashMap<i32, HashMap<String, i32>>,
@@ -71,9 +68,8 @@ impl GlobalStock {
             }
 
             for local_shop_stock in self.global_stock.values_mut() {
-                let local_shop_product_quantity = local_shop_stock
-                    .entry(product_name.clone())
-                    .or_insert(0);
+                let local_shop_product_quantity =
+                    local_shop_stock.entry(product_name.clone()).or_insert(0);
 
                 if *local_shop_product_quantity < product_quantity {
                     return Err(Box::new(ProductError::NegativeQuantity));
@@ -133,8 +129,10 @@ mod tests_global_stock {
         local_shop_stock.insert("product".to_string(), 1);
         global_stock.add_local_shop_stock(1, local_shop_stock.clone());
         let mut all_local_shops_stock = HashMap::new();
-        all_local_shops_stock
-            .insert(1, local_shop_stock.clone());
-        assert_eq!(global_stock.get_all_local_shops_stock(), all_local_shops_stock);
+        all_local_shops_stock.insert(1, local_shop_stock.clone());
+        assert_eq!(
+            global_stock.get_all_local_shops_stock(),
+            all_local_shops_stock
+        );
     }
 }

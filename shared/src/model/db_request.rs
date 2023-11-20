@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::db_message_body::DatabaseMessageBody;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct DatabaseRequest {
     pub request_category: RequestCategory,
     pub request_type: RequestType,
@@ -23,13 +23,13 @@ impl DatabaseRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum RequestCategory {
     ProductStock,
     PendingDelivery,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum RequestType {
     GetOne,
     GetAll,

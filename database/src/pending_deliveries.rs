@@ -4,7 +4,7 @@ use shared::model::product_to_delivery::ProductToDelivery;
 use std::collections::HashMap;
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingDeliveries {
     //deliveries is a hashmap with key: order_id and value: order
     deliveries: HashMap<i32, ProductToDelivery>,
@@ -25,7 +25,8 @@ impl PendingDeliveries {
     }
 
     pub fn add_delivery(&mut self, delivery: ProductToDelivery) {
-        self.deliveries.insert(delivery.get_order_id() as i32, delivery);
+        self.deliveries
+            .insert(delivery.get_order_id() as i32, delivery);
     }
 
     pub fn get_delivery(&self, order_id: i32) -> Option<ProductToDelivery> {

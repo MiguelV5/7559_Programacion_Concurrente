@@ -1,8 +1,9 @@
+use actix::Message;
 use serde::{Deserialize, Serialize};
 
 use super::db_message_body::DatabaseMessageBody;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct DatabaseResponse {
     pub response_status: ResponseStatus,
     pub body: DatabaseMessageBody,
@@ -17,7 +18,7 @@ impl DatabaseResponse {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum ResponseStatus {
     Ok,
     Error(String),

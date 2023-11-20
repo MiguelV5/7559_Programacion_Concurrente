@@ -1,17 +1,18 @@
 pub mod db_communicator;
+pub mod db_handler;
 pub mod global_stock;
 pub mod pending_deliveries;
 
 use actix::{Actor, StreamHandler};
 use pending_deliveries::PendingDeliveries;
 use std::sync::Arc;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::{
     io::{split, AsyncBufReadExt, BufReader},
     sync::Mutex,
 };
 
-use tracing::{error, info};
+use tracing::info;
 
 use tokio_stream::wrappers::LinesStream;
 
@@ -31,6 +32,9 @@ pub async fn run() {
     let pending_deliveries = PendingDeliveries::new();
     let global_stock = global_stock::GlobalStock::new();
 
+    let handler_addr =
+        db_handler::DBHandlerActor::new(pending_deliveries.clone(), global_stock.clone()).start();
+
     let listener = TcpListener::bind("127.0.0.1:9999").await.unwrap();
 
     info!("Database server listening on port 9999...");
@@ -45,8 +49,7 @@ pub async fn run() {
             DBServer {
                 addr,
                 db_write_stream,
-                pending_deliveries: pending_deliveries.clone(),
-                global_stock: global_stock.clone(),
+                handler_addr: handler_addr.clone(),
             }
         });
     }
