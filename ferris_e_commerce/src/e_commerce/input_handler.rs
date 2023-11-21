@@ -53,6 +53,6 @@ pub fn setup_input_listener(
                 );
             }
         }
-        return Ok(());
+        Ok(())
     })
 }

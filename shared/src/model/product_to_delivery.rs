@@ -1,32 +1,32 @@
 use serde::{Deserialize, Serialize};
 
-use super::stock_product::Product;
+use super::order::Order;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProductToDelivery {
-    product: Product,
-    order_id: u32,
-    local_id: u8,
+pub struct OrderToDelivery {
+    order: Order,
+    ecommerce_id: u16,
+    local_id: u16,
 }
 
-impl ProductToDelivery {
-    pub fn new(product: Product, order_id: u32, local_id: u8) -> Self {
-        ProductToDelivery {
-            product,
-            order_id,
+impl OrderToDelivery {
+    pub fn new(product: Order, ecommerce_id: u16, local_id: u16) -> Self {
+        OrderToDelivery {
+            order: product,
+            ecommerce_id,
             local_id,
         }
     }
 
-    pub fn get_product(&self) -> Product {
-        self.product.clone()
+    pub fn get_product(&self) -> Order {
+        self.order.clone()
     }
 
-    pub fn get_order_id(&self) -> u32 {
-        self.order_id
+    pub fn get_ecommerce_id(&self) -> u16 {
+        self.ecommerce_id
     }
 
-    pub fn get_local_id(&self) -> u8 {
+    pub fn get_local_id(&self) -> u16 {
         self.local_id
     }
 }

@@ -18,7 +18,7 @@ fn main() -> io::Result<()> {
 
     loop {
         
-        let request = DatabaseRequest::new(RequestCategory::PendingDelivery, RequestType::GetOne, DatabaseMessageBody::OrderId(1));
+        let request = DatabaseRequest::new(RequestCategory::NewLocalId, RequestType::GetOne, DatabaseMessageBody::None);
         
         println!("Enviando {}", serde_json::to_string(&request)?);
         stream.write_all(serde_json::to_string(&request)?.as_bytes())?;

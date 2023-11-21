@@ -40,24 +40,15 @@ impl Order {
     }
 
     pub fn set_ss_id(&mut self, ss_id: u16) {
-        match self {
-            Order::Web(web_order) => web_order.set_ss_id(ss_id),
-            _ => {}
-        }
+        if let Order::Web(web_order) = self { web_order.set_ss_id(ss_id) }
     }
 
     pub fn set_sl_id(&mut self, ss_id: u16) {
-        match self {
-            Order::Web(web_order) => web_order.set_sl_id(ss_id),
-            _ => {}
-        }
+        if let Order::Web(web_order) = self { web_order.set_sl_id(ss_id) }
     }
 
     pub fn set_worker_id(&mut self, worker_id: u16) {
-        match self {
-            Order::Web(web_order) => web_order.set_worker_id(worker_id),
-            _ => {}
-        }
+        if let Order::Web(web_order) = self { web_order.set_worker_id(worker_id) }
     }
 
     pub fn get_local_id(&self) -> Option<u16> {

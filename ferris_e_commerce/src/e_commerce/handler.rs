@@ -105,7 +105,7 @@ async fn start_actors(
         })
         .await?;
 
-    return Ok((order_handler, connection_handler));
+    Ok((order_handler, connection_handler))
 }
 
 fn parse_given_orders(orders_file_path: &str) -> Result<Vec<Order>, Box<dyn Error>> {

@@ -120,7 +120,6 @@ impl Handler<AskEcommerceAddr> for ConnectionHandlerActor {
 
     fn handle(&mut self, _: AskEcommerceAddr, _: &mut Context<Self>) -> Self::Result {
         self.curr_e_commerce_addr
-            .clone()
             .ok_or("E-commerce address not set.".to_string())
     }
 }

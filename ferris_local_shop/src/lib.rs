@@ -41,7 +41,7 @@ fn parse_args() -> Result<(String, String, usize), LocalShopError> {
     let mut stock_path = DEFAULT_STOCK_FILEPATH.to_string();
     let mut num_workers = DEFAULT_NUM_WORKERS;
 
-    if args.len() == 0 {
+    if args.is_empty() {
         info!("[LocalShop] No arguments provided, using default paths");
         return Ok((order_path, stock_path, num_workers));
     }
@@ -67,7 +67,7 @@ fn parse_args() -> Result<(String, String, usize), LocalShopError> {
                 error!("[LocalShop] Invalid number of workers: {}", err);
                 LocalShopError::ArgsParsingError(String::from("Invalid number of workers"))
             })?;
-            if num_workers <= 0 {
+            if num_workers == 0 {
                 error!("[LocalShop] Invalid number of workers: {}", num_workers);
                 return Err(LocalShopError::ArgsParsingError(String::from(
                     "Invalid number of workers",

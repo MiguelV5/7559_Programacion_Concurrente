@@ -1,13 +1,13 @@
 //struct and logic for store pending deliveries in memmory
 
-use shared::model::product_to_delivery::ProductToDelivery;
+use shared::model::product_to_delivery::OrderToDelivery;
 use std::collections::HashMap;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingDeliveries {
-    //deliveries is a hashmap with key: order_id and value: order
-    deliveries: HashMap<i32, ProductToDelivery>,
+    //deliveries is a hashmap with key: ecommerce_id and value: order
+    deliveries: HashMap<u16, Vec<OrderToDelivery>>,
 }
 
 impl Default for PendingDeliveries {
@@ -24,54 +24,27 @@ impl PendingDeliveries {
         }
     }
 
-    pub fn add_delivery(&mut self, delivery: ProductToDelivery) {
-        self.deliveries
-            .insert(delivery.get_order_id() as i32, delivery);
+    pub fn add_deliveries(&mut self, deliveries: Vec<OrderToDelivery>) {
+        for delivery in deliveries {
+            let ecommerce_id = delivery.get_ecommerce_id();
+            let mut ecommerce_deliveries = self
+                .deliveries
+                .get(&ecommerce_id)
+                .cloned()
+                .unwrap_or(vec![]);
+            ecommerce_deliveries.push(delivery);
+            self.deliveries.insert(ecommerce_id, ecommerce_deliveries);
+        }
     }
 
-    pub fn get_delivery(&self, order_id: i32) -> Option<ProductToDelivery> {
-        self.deliveries.get(&order_id).cloned()
-    }
-
-    pub fn remove_delivery(&mut self, order_id: i32) {
-        self.deliveries.remove(&order_id);
-    }
-
-    pub fn get_all_deliveries(&self) -> Vec<ProductToDelivery> {
-        self.deliveries.values().cloned().collect()
-    }
-}
-
-#[cfg(test)]
-mod tests_pending_deliveries {
-    use super::*;
-    use shared::model::stock_product::Product;
-
-    #[test]
-    fn test01_add_delivery() {
-        let mut pending_deliveries = PendingDeliveries::new();
-        let product = Product::new("product".to_string(), 1);
-        let delivery = ProductToDelivery::new(product, 1, 1);
-        pending_deliveries.add_delivery(delivery.clone());
-        assert_eq!(pending_deliveries.get_delivery(1), Some(delivery));
-    }
-
-    #[test]
-    fn test02_remove_delivery() {
-        let mut pending_deliveries = PendingDeliveries::new();
-        let product = Product::new("product".to_string(), 1);
-        let delivery = ProductToDelivery::new(product, 1, 1);
-        pending_deliveries.add_delivery(delivery.clone());
-        pending_deliveries.remove_delivery(1);
-        assert_eq!(pending_deliveries.get_delivery(1), None);
-    }
-
-    #[test]
-    fn test03_get_all_deliveries() {
-        let mut pending_deliveries = PendingDeliveries::new();
-        let product = Product::new("product".to_string(), 1);
-        let delivery = ProductToDelivery::new(product, 1, 1);
-        pending_deliveries.add_delivery(delivery.clone());
-        assert_eq!(pending_deliveries.get_all_deliveries(), vec![delivery]);
+    pub fn get_delivery(&mut self, ecommerce_id: u16) -> Vec<OrderToDelivery> {
+        // get and remove all deliveries for ecommerce_id
+        let deliveries = self
+            .deliveries
+            .get(&ecommerce_id)
+            .cloned()
+            .unwrap_or(vec![]);
+        self.deliveries.remove(&ecommerce_id);
+        deliveries
     }
 }

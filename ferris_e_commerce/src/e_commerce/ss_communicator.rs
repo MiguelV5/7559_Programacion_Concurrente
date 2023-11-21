@@ -58,7 +58,7 @@ async fn try_connect_to_servers(connection_handler: Addr<ConnectionHandler>) -> 
                 ctx.add_stream(LinesStream::new(BufReader::new(reader).lines()));
                 SSMiddleman {
                     connected_server_write_stream: Arc::new(Mutex::new(writer)),
-                    connected_server_id: (current_port - SS_INITIAL_PORT + 1) as u16,
+                    connected_server_id: (current_port - SS_INITIAL_PORT + 1),
                 }
             });
             match ss_middleman.try_send(LeaderElection {}) {
@@ -72,7 +72,7 @@ async fn try_connect_to_servers(connection_handler: Addr<ConnectionHandler>) -> 
             };
             match connection_handler.try_send(AddSSMiddlemanAddr {
                 ss_middleman_addr: ss_middleman,
-                server_id: (current_port - SS_INITIAL_PORT) as u16,
+                server_id: (current_port - SS_INITIAL_PORT),
             }) {
                 Ok(_) => {}
                 Err(_) => {

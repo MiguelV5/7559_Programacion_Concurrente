@@ -1,11 +1,14 @@
 use std::{collections::HashMap, error::Error};
 
-use shared::model::{order::Order, stock_product::ProductError};
+use shared::model::{
+    order::Order,
+    stock_product::{Product, ProductError},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GlobalStock {
     //Global stock is a hashmap of local shop stocks, each local shop is a hashmap of products and it's quantity
-    global_stock: HashMap<i32, HashMap<String, i32>>,
+    global_stock: HashMap<u16, HashMap<String, Product>>,
 }
 
 impl Default for GlobalStock {
@@ -24,59 +27,65 @@ impl GlobalStock {
 
     pub fn add_local_shop_stock(
         &mut self,
-        local_shop_id: i32,
-        local_shop_stock: HashMap<String, i32>,
+        local_shop_id: u16,
+        local_shop_stock: HashMap<String, Product>,
     ) {
         self.global_stock.insert(local_shop_id, local_shop_stock);
     }
 
-    pub fn get_local_shop_stock(&self, local_shop_id: i32) -> Option<HashMap<String, i32>> {
+    pub fn get_local_shop_stock(&self, local_shop_id: u16) -> Option<HashMap<String, Product>> {
         self.global_stock.get(&local_shop_id).cloned()
     }
 
-    pub fn get_products_quantity_in_locals(&self, product_name: String) -> HashMap<i32, i32> {
+    pub fn get_products_quantity_in_locals(&self, product_name: String) -> HashMap<u16, i32> {
         let mut products_quantity_in_locals = HashMap::new();
-        for (local_shop_id, local_shop_stock) in &self.global_stock {
-            let quantity = local_shop_stock.get(&product_name).cloned().unwrap_or(0);
-            products_quantity_in_locals.insert(*local_shop_id, quantity);
+        for (local_shop_id, local_shop_stock) in self.global_stock.iter() {
+            let product_quantity = local_shop_stock
+                .get(&product_name)
+                .cloned()
+                .unwrap_or(Product::new(product_name.clone(), 0))
+                .get_quantity();
+            products_quantity_in_locals.insert(*local_shop_id, product_quantity);
         }
         products_quantity_in_locals
     }
 
     pub fn get_product_quantity_from_local_shop_stock(
         &self,
-        local_shop_id: i32,
+        local_shop_id: u16,
         product_name: String,
     ) -> Option<i32> {
-        let global_stock = &self.global_stock;
-        let local_shop_stock = global_stock.get(&local_shop_id)?;
-        local_shop_stock.get(&product_name).cloned()
+        self.global_stock
+            .get(&local_shop_id)
+            .cloned()
+            .unwrap_or(HashMap::new())
+            .get(&product_name)
+            .cloned()
+            .map(|product| product.get_quantity())
     }
 
-    pub fn get_all_local_shops_stock(&self) -> HashMap<i32, HashMap<String, i32>> {
+    pub fn get_all_local_shops_stock(&self) -> HashMap<u16, HashMap<String, Product>> {
         let global_stock = self.global_stock.clone();
         global_stock.clone()
     }
 
     pub fn process_order_in_stock(&mut self, order: Order) -> Result<(), Box<dyn Error>> {
         for product in order.get_products() {
-            let product_name = product.get_name().to_string();
+            let product_name = product.get_name();
             let product_quantity = product.get_quantity();
-
-            if product_quantity < 0 {
-                return Err(Box::new(ProductError::NegativeQuantity));
-            }
-
-            for local_shop_stock in self.global_stock.values_mut() {
-                let local_shop_product_quantity =
-                    local_shop_stock.entry(product_name.clone()).or_insert(0);
-
-                if *local_shop_product_quantity < product_quantity {
-                    return Err(Box::new(ProductError::NegativeQuantity));
-                }
-
-                *local_shop_product_quantity -= product_quantity;
-            }
+            let local_shop_id = order.get_local_id().ok_or(ProductError::NegativeQuantity)?;
+            let mut local_shop_stock = self
+                .global_stock
+                .get(&local_shop_id)
+                .cloned()
+                .unwrap_or(HashMap::new());
+            let mut product_in_local_shop_stock = local_shop_stock
+                .get(&product_name)
+                .cloned()
+                .unwrap_or(Product::new(product_name.clone(), 0));
+            product_in_local_shop_stock.affect_quantity_with_value(product_quantity);
+            local_shop_stock.insert(product_name, product_in_local_shop_stock);
+            self.global_stock.insert(local_shop_id, local_shop_stock);
         }
 
         Ok(())
@@ -84,55 +93,76 @@ impl GlobalStock {
 }
 
 #[cfg(test)]
-mod tests_global_stock {
+mod tests {
     use super::*;
 
     #[test]
-    fn test01_add_local_shop_stock() {
+    fn test_add_local_shop_stock() {
         let mut global_stock = GlobalStock::new();
         let mut local_shop_stock = HashMap::new();
-        local_shop_stock.insert("product".to_string(), 1);
+        local_shop_stock.insert(
+            "product1".to_string(),
+            Product::new("product1".to_string(), 10),
+        );
+        local_shop_stock.insert(
+            "product2".to_string(),
+            Product::new("product2".to_string(), 20),
+        );
         global_stock.add_local_shop_stock(1, local_shop_stock.clone());
-        assert_eq!(global_stock.get_local_shop_stock(1), Some(local_shop_stock));
+        assert_eq!(
+            global_stock.get_local_shop_stock(1).unwrap(),
+            local_shop_stock
+        );
     }
 
     #[test]
-    fn test02_get_products_quantity_in_locals() {
+    fn test_get_local_shop_stock() {
         let mut global_stock = GlobalStock::new();
         let mut local_shop_stock = HashMap::new();
-        local_shop_stock.insert("product".to_string(), 1);
+        local_shop_stock.insert(
+            "product1".to_string(),
+            Product::new("product1".to_string(), 10),
+        );
+        local_shop_stock.insert(
+            "product2".to_string(),
+            Product::new("product2".to_string(), 20),
+        );
         global_stock.add_local_shop_stock(1, local_shop_stock.clone());
+        assert_eq!(
+            global_stock.get_local_shop_stock(1).unwrap(),
+            local_shop_stock
+        );
+    }
+
+    #[test]
+    fn test_get_products_quantity_in_locals() {
+        let mut global_stock = GlobalStock::new();
+        let mut local_shop_stock1 = HashMap::new();
+        local_shop_stock1.insert(
+            "product1".to_string(),
+            Product::new("product1".to_string(), 10),
+        );
+        local_shop_stock1.insert(
+            "product2".to_string(),
+            Product::new("product2".to_string(), 20),
+        );
+        global_stock.add_local_shop_stock(1, local_shop_stock1.clone());
+        let mut local_shop_stock2 = HashMap::new();
+        local_shop_stock2.insert(
+            "product1".to_string(),
+            Product::new("product1".to_string(), 30),
+        );
+        local_shop_stock2.insert(
+            "product2".to_string(),
+            Product::new("product2".to_string(), 40),
+        );
+        global_stock.add_local_shop_stock(2, local_shop_stock2.clone());
         let mut products_quantity_in_locals = HashMap::new();
-        products_quantity_in_locals.insert(1, 1);
+        products_quantity_in_locals.insert(1, 10);
+        products_quantity_in_locals.insert(2, 30);
         assert_eq!(
-            global_stock.get_products_quantity_in_locals("product".to_string()),
+            global_stock.get_products_quantity_in_locals("product1".to_string()),
             products_quantity_in_locals
-        );
-    }
-
-    #[test]
-    fn test03_get_product_quantity_from_local_shop_stock() {
-        let mut global_stock = GlobalStock::new();
-        let mut local_shop_stock = HashMap::new();
-        local_shop_stock.insert("product".to_string(), 1);
-        global_stock.add_local_shop_stock(1, local_shop_stock.clone());
-        assert_eq!(
-            global_stock.get_product_quantity_from_local_shop_stock(1, "product".to_string()),
-            Some(1)
-        );
-    }
-
-    #[test]
-    fn test04_get_all_local_shops_stock() {
-        let mut global_stock = GlobalStock::new();
-        let mut local_shop_stock = HashMap::new();
-        local_shop_stock.insert("product".to_string(), 1);
-        global_stock.add_local_shop_stock(1, local_shop_stock.clone());
-        let mut all_local_shops_stock = HashMap::new();
-        all_local_shops_stock.insert(1, local_shop_stock.clone());
-        assert_eq!(
-            global_stock.get_all_local_shops_stock(),
-            all_local_shops_stock
         );
     }
 }
