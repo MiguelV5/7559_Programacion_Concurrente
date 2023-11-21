@@ -9,6 +9,7 @@ pub enum DatabaseMessageBody {
     EcommerceId(u16),
     ProductName(String),
     ProductsToDelivery(Vec<OrderToDelivery>),
+    GlobalStockResponse(HashMap<u16, HashMap<String, Product>>),
     GlobalStock(u16, HashMap<String, Product>),
     ProductQuantityFromLocals(HashMap<u16, i32>), // local_shop_id, quantity
     Order(Order),

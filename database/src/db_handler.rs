@@ -80,7 +80,7 @@ impl DBHandlerActor {
                     self.global_stock.get_all_local_shops_stock();
                     DatabaseResponse::new(
                         ResponseStatus::Ok,
-                        DatabaseMessageBody::GlobalStock(
+                        DatabaseMessageBody::GlobalStockResponse(
                             self.global_stock.get_all_local_shops_stock(),
                         ),
                     )
@@ -106,7 +106,7 @@ impl DBHandlerActor {
                 }
                 RequestType::Post => {
                     //process order in stock
-                    if let DatabaseMessageBody::Order(order) = request.body {
+                    if let DatabaseMessageBody::Order(order) = request.body.clone() {
                         let _response = match self.global_stock.process_order_in_stock(order) {
                             Ok(_) => {
                                 DatabaseResponse::new(ResponseStatus::Ok, DatabaseMessageBody::None)
@@ -117,8 +117,11 @@ impl DBHandlerActor {
                             ),
                         };
                     }
-                    if let DatabaseMessageBody::GlobalStock(local_shop_id, local_shop_stock) = request.body {
-                        self.global_stock.add_local_shop_stock(local_shop_id, local_shop_stock);
+                    if let DatabaseMessageBody::GlobalStock(local_shop_id, local_shop_stock) =
+                        request.body.clone()
+                    {
+                        self.global_stock
+                            .add_local_shop_stock(local_shop_id, local_shop_stock);
                         DatabaseResponse::new(ResponseStatus::Ok, DatabaseMessageBody::None)
                     } else {
                         DatabaseResponse::new(
