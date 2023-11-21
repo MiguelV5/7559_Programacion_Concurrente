@@ -1,6 +1,6 @@
 use super::connection_handler::{self, ConnectionHandler};
 use super::order_handler;
-use super::order_worker::{self, OrderWorker};
+use super::order_worker::OrderWorker;
 use super::{input_handler, order_handler::OrderHandler, sl_communicator, ss_communicator};
 use actix::prelude::*;
 use shared::{model::order::Order, parsers::orders_parser::OrdersParser};
@@ -53,7 +53,7 @@ async fn start_async(
     let (tx_from_input_to_sl, rx_from_input_to_sl) = channel::<String>();
     let (tx_from_input_to_ss, rx_from_input_to_ss) = channel::<String>();
 
-    let (order_handler, connection_handler) = start_actors(orders).await?;
+    let (order_handler, connection_handler) = start_actors(orders, servers_listening_port).await?;
     sender_of_order_handler
         .send(order_handler.clone())
         .map_err(|_| "Error sending order handler")?;
@@ -85,10 +85,11 @@ async fn start_async(
 
 async fn start_actors(
     orders: Vec<Order>,
+    servers_listening_port: u16,
 ) -> Result<(Addr<OrderHandler>, Addr<ConnectionHandler>), Box<dyn Error>> {
     let order_handler = OrderHandler::new(&orders).start();
 
-    let connection_handler = ConnectionHandler::new().start();
+    let connection_handler = ConnectionHandler::new(servers_listening_port).start();
 
     let order_worker = OrderWorker::new(order_handler.clone(), connection_handler.clone()).start();
     order_handler

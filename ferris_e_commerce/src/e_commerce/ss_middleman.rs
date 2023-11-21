@@ -1,20 +1,27 @@
 use std::sync::Arc;
 
-use actix::AsyncContext;
 use actix::{
     dev::ContextFutureSpawner, fut::wrap_future, Actor, Context, Handler, Message, StreamHandler,
 };
+use actix::{Addr, AsyncContext};
 use shared::model::ss_message::SSMessage;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use tokio::io::AsyncWriteExt;
 use tokio::io::WriteHalf;
 use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::Mutex;
 
+use crate::e_commerce::connection_handler::{
+    AddSSMiddlemanAddr, GetMyServerId, StartLeaderElection,
+};
+
+use super::connection_handler::ConnectionHandler;
+
 pub struct SSMiddleman {
+    pub connection_handler: Addr<ConnectionHandler>,
     pub connected_server_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
-    pub connected_server_id: u32,
+    pub connected_server_id: Option<u16>,
 }
 
 impl Actor for SSMiddleman {
@@ -24,16 +31,16 @@ impl Actor for SSMiddleman {
 impl StreamHandler<Result<String, std::io::Error>> for SSMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
-            info!("[LSMiddleman] Received msg: {}", msg);
+            info!("[ONLINE RECEIVER] Received msg: {}", msg);
             if ctx
                 .address()
                 .try_send(HandleOnlineMsg { received_msg: msg })
                 .is_err()
             {
-                error!("[LSMiddleman] Error sending msg to handler");
+                error!("[ONLINE RECEIVER] Error sending msg to handler");
             }
         } else if let Err(err) = msg {
-            error!("[LSMiddleman] Error in received msg: {}", err);
+            error!("[ONLINE RECEIVER] Error in received msg: {}", err);
         }
     }
 }
@@ -49,56 +56,34 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
 
     fn handle(&mut self, msg: HandleOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
         match SSMessage::from_string(&msg.received_msg).map_err(|err| err.to_string())? {
-            SSMessage::ElectLeader { self_ip } => {
-                info!("ElectLeader message received");
-                let response = SSMessage::AckElectLeader {
-                    self_ip: self_ip.clone(),
-                }
-                .to_string()
-                .map_err(|err| err.to_string())?;
-                ctx.address()
-                    .try_send(SendResponse {
-                        msg_to_send: response.to_string(),
+            SSMessage::ElectLeader { requestor_ip } => {}
+            SSMessage::AckElectLeader { responder_ip } => {}
+            SSMessage::SelectedLeader { leader_ip } => {}
+            SSMessage::AckSelectedLeader { responder_ip } => {}
+            SSMessage::DelegateOrderToLeader { web_order } => {}
+            SSMessage::AckDelegateOrderToLeader { web_order } => {}
+            SSMessage::SolvedPrevDelegatedOrder { web_order } => {
+                info!("ORDER SOLVED: {:?}", web_order);
+            }
+            SSMessage::AckSolvedPrevDelegatedOrder { web_order } => {}
+            SSMessage::GetServerId => {
+                self.connection_handler
+                    .try_send(GetMyServerId {
+                        sender_addr: ctx.address(),
                     })
                     .map_err(|err| err.to_string())?;
-                ctx.address()
-                    .try_send(LeaderElection {})
-                    .map_err(|err| err.to_string())?;
             }
-            SSMessage::AckElectLeader { self_ip } => {
-                info!("AckElectLeader message received");
-                let response = SSMessage::SelectedLeader {
-                    leader_ip: self_ip.clone(),
-                }
-                .to_string()
-                .map_err(|err| err.to_string())?;
-                ctx.address()
-                    .try_send(SendResponse {
-                        msg_to_send: response.to_string(),
+            SSMessage::AckGetServerId { server_id } => {
+                self.connected_server_id = Some(server_id);
+                self.connection_handler
+                    .try_send(AddSSMiddlemanAddr {
+                        ss_middleman_addr: ctx.address(),
+                        connected_server_id: server_id,
                     })
                     .map_err(|err| err.to_string())?;
-                ctx.address()
-                    .try_send(LeaderElection {})
+                self.connection_handler
+                    .try_send(StartLeaderElection {})
                     .map_err(|err| err.to_string())?;
-            }
-            SSMessage::SelectedLeader { leader_ip } => {
-                info!("SelectedLeader message received");
-                let response = SSMessage::AckSelectedLeader {
-                    self_ip: leader_ip.clone(),
-                }
-                .to_string()
-                .map_err(|err| err.to_string())?;
-                ctx.address()
-                    .try_send(SendResponse {
-                        msg_to_send: response.to_string(),
-                    })
-                    .map_err(|err| err.to_string())?;
-                ctx.address()
-                    .try_send(LeaderElection {})
-                    .map_err(|err| err.to_string())?;
-            }
-            SSMessage::AckSelectedLeader { self_ip } => {
-                info!("AckSelectedLeader message received from {}", self_ip);
             }
         };
         Ok(())
@@ -107,14 +92,14 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-struct SendResponse {
+struct SendOnlineMsg {
     msg_to_send: String,
 }
 
-impl Handler<SendResponse> for SSMiddleman {
+impl Handler<SendOnlineMsg> for SSMiddleman {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: SendResponse, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: SendOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
         let response = msg.msg_to_send + "\n";
         let writer = self.connected_server_write_stream.clone();
         wrap_future::<_, Self>(async move {
@@ -125,9 +110,9 @@ impl Handler<SendResponse> for SSMiddleman {
                 .await
                 .is_ok()
             {
-                info!("[SSMiddleman] Respuesta enviada al server: {}", response);
+                info!("[ONLINE SENDER]: {}", response);
             } else {
-                error!("[SSMiddleman] Error al escribir en el stream")
+                error!("[ONLINE SENDER]: Error writing to stream")
             };
         })
         .spawn(ctx);
@@ -138,13 +123,46 @@ impl Handler<SendResponse> for SSMiddleman {
 // ================================================================================
 
 #[derive(Message)]
-#[rtype(result = "()")]
-pub struct LeaderElection {}
+#[rtype(result = "Result<(),String>")]
+pub struct GoAskForConnectedServerId {}
 
-impl Handler<LeaderElection> for SSMiddleman {
-    type Result = ();
+impl Handler<GoAskForConnectedServerId> for SSMiddleman {
+    type Result = Result<(), String>;
 
-    fn handle(&mut self, _msg: LeaderElection, _ctx: &mut Self::Context) -> Self::Result {
-        warn!("LeaderElection message received");
+    fn handle(&mut self, _msg: GoAskForConnectedServerId, ctx: &mut Self::Context) -> Self::Result {
+        info!("GoAskForConnectedServerId message received");
+        let online_msg = SSMessage::GetServerId
+            .to_string()
+            .map_err(|err| err.to_string())?;
+        ctx.address()
+            .try_send(SendOnlineMsg {
+                msg_to_send: online_msg,
+            })
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<(),String>")]
+pub struct GotMyServerId {
+    pub my_id: u16,
+}
+
+impl Handler<GotMyServerId> for SSMiddleman {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: GotMyServerId, ctx: &mut Self::Context) -> Self::Result {
+        let online_msg = SSMessage::AckGetServerId {
+            server_id: msg.my_id,
+        }
+        .to_string()
+        .map_err(|err| err.to_string())?;
+        ctx.address()
+            .try_send(SendOnlineMsg {
+                msg_to_send: online_msg,
+            })
+            .map_err(|err| err.to_string())?;
+        Ok(())
     }
 }

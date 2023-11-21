@@ -20,10 +20,10 @@ use tokio::sync::Mutex;
 use tokio_stream::wrappers::LinesStream;
 
 use crate::e_commerce::connection_handler::AddSSMiddlemanAddr;
-use crate::e_commerce::ss_middleman::LeaderElection;
 use crate::e_commerce::ss_middleman::SSMiddleman;
 
 use super::connection_handler::ConnectionHandler;
+use super::ss_middleman::GoAskForConnectedServerId;
 
 // ====================================================================
 
@@ -57,22 +57,14 @@ async fn try_connect_to_servers(connection_handler: Addr<ConnectionHandler>) -> 
             let ss_middleman = SSMiddleman::create(|ctx| {
                 ctx.add_stream(LinesStream::new(BufReader::new(reader).lines()));
                 SSMiddleman {
+                    connection_handler: connection_handler.clone(),
                     connected_server_write_stream: Arc::new(Mutex::new(writer)),
-                    connected_server_id: (current_port - SS_INITIAL_PORT + 1) as u32,
+                    connected_server_id: Some(current_port),
                 }
             });
-            match ss_middleman.try_send(LeaderElection {}) {
-                Ok(_) => {}
-                Err(_) => {
-                    error!("Error sending LeaderElection to server");
-                    if let Some(system) = System::try_current() {
-                        system.stop();
-                    }
-                }
-            };
             match connection_handler.try_send(AddSSMiddlemanAddr {
                 ss_middleman_addr: ss_middleman,
-                server_id: (current_port - SS_INITIAL_PORT) as u32,
+                connected_server_id: current_port,
             }) {
                 Ok(_) => {}
                 Err(_) => {
@@ -120,7 +112,6 @@ async fn handle_communication_loop(
     listener: AsyncTcpListener,
     connection_handler: Addr<ConnectionHandler>,
 ) -> Result<(), String> {
-    let mut server_id = 0;
     loop {
         if is_exit_required(&rx_from_input) {
             return Ok(());
@@ -128,41 +119,28 @@ async fn handle_communication_loop(
 
         if let Ok((stream, stream_addr)) = listener.accept().await {
             info!(" [{:?}] Server connected", stream_addr);
-            handle_connected_server(stream, &connection_handler, server_id);
-            server_id += 1;
+            handle_server_connected_to_me(stream, &connection_handler);
         };
     }
 }
 
-fn handle_connected_server(
+fn handle_server_connected_to_me(
     async_stream: AsyncTcpStream,
     connection_handler: &Addr<ConnectionHandler>,
-    server_id: u32,
 ) {
     let (reader, writer) = split(async_stream);
     let ss_middleman = SSMiddleman::create(|ctx| {
         ctx.add_stream(LinesStream::new(BufReader::new(reader).lines()));
         SSMiddleman {
+            connection_handler: connection_handler.clone(),
             connected_server_write_stream: Arc::new(Mutex::new(writer)),
-            connected_server_id: server_id,
+            connected_server_id: None,
         }
     });
-    match ss_middleman.try_send(LeaderElection {}) {
+    match ss_middleman.try_send(GoAskForConnectedServerId {}) {
         Ok(_) => {}
         Err(_) => {
-            error!("Error sending LeaderElection to server");
-            if let Some(system) = System::try_current() {
-                system.stop();
-            }
-        }
-    };
-    match connection_handler.try_send(AddSSMiddlemanAddr {
-        ss_middleman_addr: ss_middleman,
-        server_id,
-    }) {
-        Ok(_) => {}
-        Err(_) => {
-            error!("Error sending AddSSMiddlemanAddr to ConnectionHandler");
+            error!("Error sending GoAskForConnectedServerId to recently created SSMiddleman");
             if let Some(system) = System::try_current() {
                 system.stop();
             }
