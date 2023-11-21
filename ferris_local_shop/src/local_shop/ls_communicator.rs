@@ -25,7 +25,6 @@ pub fn handle_connection_with_e_commerce(
 ) -> JoinHandle<Result<(), String>> {
     actix::spawn(async move {
         loop {
-            trace!("[LSComminicator] Trying to connect to any server.");
             for curr_port in SL_INITIAL_PORT..SL_MAX_PORT + 1 {
                 let addr = format!("{}:{}", LOCALHOST, curr_port);
 
@@ -59,6 +58,7 @@ pub fn handle_connection_with_e_commerce(
                 .map_err(|err| err.to_string())?;
 
             if !connection_handler_addr.connected() || !is_alive {
+                trace!("[LSComminicator] Closing.");
                 return Ok(());
             }
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;

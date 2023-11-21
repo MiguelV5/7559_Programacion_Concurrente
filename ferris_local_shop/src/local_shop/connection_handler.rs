@@ -1,10 +1,16 @@
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
 use actix_rt::System;
-use shared::model::order::Order;
+use shared::model::{
+    ls_message::LSMessage,
+    order::{Order, WebOrder},
+};
 use tokio::sync::mpsc::Sender;
 use tracing::{error, info, warn};
 
-use crate::local_shop::{constants::WAKE_UP, ls_middleman::CloseConnection};
+use crate::local_shop::{
+    constants::WAKE_UP,
+    ls_middleman::{CloseConnection, SendMessage},
+};
 
 use super::{
     ls_middleman::LSMiddleman,
@@ -27,7 +33,7 @@ impl ConnectionHandlerActor {
     pub fn new(order_handler: Addr<OrderHandlerActor>) -> Self {
         Self {
             am_alive: true,
-            local_id: None,
+            local_id: Some(1),
             order_handler,
             ls_middleman: None,
             tx_close_connection: None,
@@ -67,19 +73,16 @@ impl Handler<CloseSystem> for ConnectionHandlerActor {
             info!("[ConnectionHandlerActor] Closing system.");
             system.stop();
             self.am_alive = false;
+
             if let Some(ls_middleman) = &self.ls_middleman {
                 ls_middleman
                     .try_send(CloseConnection {})
                     .map_err(|err| err.to_string())?;
-            } else {
-                warn!("[ConnectionHandler] Cannot close connection, no LsMiddleman found.")
             }
-            if let Some(tx_close_connection) = &self.tx_close_connection {
+            if let Some(tx_close_connection) = self.tx_close_connection.take() {
                 tx_close_connection
                     .try_send(WAKE_UP.to_string())
                     .map_err(|err| err.to_string())?;
-            } else {
-                warn!("[ConnectionHandler] Cannot close connection, no tx_close_connection found.")
             }
             return Ok(());
         }
@@ -110,10 +113,19 @@ pub struct AddLSMiddleman {
 impl Handler<AddLSMiddleman> for ConnectionHandlerActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: AddLSMiddleman, _: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: AddLSMiddleman, ctx: &mut Context<Self>) -> Self::Result {
         info!("[ConnectionHandler] Adding new LsMiddleman.");
         self.ls_middleman = Some(msg.ls_middleman);
         self.tx_close_connection = Some(msg.tx_close_connection);
+
+        if let Some((order, was_finished)) = self.orders_to_send.pop() {
+            ctx.address()
+                .try_send(TrySendFinishedOrder {
+                    order,
+                    was_finished,
+                })
+                .map_err(|err| err.to_string())?;
+        }
         Ok(())
     }
 }
@@ -168,7 +180,7 @@ impl Handler<WakeUpConnection> for ConnectionHandlerActor {
 
     fn handle(&mut self, _: WakeUpConnection, _: &mut Context<Self>) -> Self::Result {
         info!("[ConnectionHandler] Waking up connection.");
-        if let Some(tx_close_connection) = &self.tx_close_connection {
+        if let Some(tx_close_connection) = &self.tx_close_connection.take() {
             tx_close_connection
                 .try_send(WAKE_UP.to_string())
                 .map_err(|err| err.to_string())?;
@@ -182,17 +194,17 @@ impl Handler<WakeUpConnection> for ConnectionHandlerActor {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct AddNewFinishedOrder {
-    pub order: Order,
-    pub was_finished: bool,
+struct SaveNewFinishedOrder {
+    order: Order,
+    was_finished: bool,
 }
 
-impl Handler<AddNewFinishedOrder> for ConnectionHandlerActor {
+impl Handler<SaveNewFinishedOrder> for ConnectionHandlerActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: AddNewFinishedOrder, _: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: SaveNewFinishedOrder, _: &mut Context<Self>) -> Self::Result {
         info!(
-            "[ConnectionHandler] Adding new finished order to send: {:?}.",
+            "[ConnectionHandler] Saving new finished order to send: {:?}.",
             msg
         );
         self.orders_to_send.push((msg.order, msg.was_finished));
@@ -202,63 +214,156 @@ impl Handler<AddNewFinishedOrder> for ConnectionHandlerActor {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-struct SendFinishedOrder {
+pub struct TrySendFinishedOrder {
+    pub order: Order,
+    pub was_finished: bool,
+}
+
+impl Handler<TrySendFinishedOrder> for ConnectionHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: TrySendFinishedOrder, ctx: &mut Context<Self>) -> Self::Result {
+        if self.local_id.is_none() || self.ls_middleman.is_none() {
+            return ctx
+                .address()
+                .try_send(SaveNewFinishedOrder {
+                    order: msg.order,
+                    was_finished: msg.was_finished,
+                })
+                .map_err(|err| err.to_string());
+        }
+
+        match msg.order {
+            Order::Local(_) => ctx
+                .address()
+                .try_send(TrySendFinishedLocalOrder {
+                    order: msg.order,
+                    was_finished: msg.was_finished,
+                })
+                .map_err(|err| err.to_string()),
+            Order::Web(_) => ctx
+                .address()
+                .try_send(TrySendFinishedWebOrder {
+                    order: msg.order,
+                    was_finished: msg.was_finished,
+                })
+                .map_err(|err| err.to_string()),
+        }
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+struct TrySendFinishedLocalOrder {
     order: Order,
     was_finished: bool,
 }
 
-impl Handler<SendFinishedOrder> for ConnectionHandlerActor {
+impl Handler<TrySendFinishedLocalOrder> for ConnectionHandlerActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, _: SendFinishedOrder, _: &mut Context<Self>) -> Self::Result {
-        if self.local_id.is_none() || self.ls_middleman.is_none() {
-            return Err(
-                "Should not happen, the local id and the LSMiddleman must be set".to_string(),
-            );
-        }
+    fn handle(&mut self, msg: TrySendFinishedLocalOrder, ctx: &mut Context<Self>) -> Self::Result {
         let ls_middleman = self
             .ls_middleman
             .clone()
-            .ok_or("Should not happen, the local id and the LSMiddleman must be set".to_string())?;
+            .ok_or("Should not happen, the LSMiddleman must be set".to_string())?;
+        let message;
 
-        // match &msg.order {
-        //     Order::Local(_) => {
-        //         if msg.was_finished {
-        //             message = LSMessage::OrderFinished {
-        //                 e_commerce_id: None,
-        //                 local_id: self
-        //                     .local_id
-        //                     .ok_or("Should not happen, the local id is already set.".to_string())?,
-        //                 order: msg.order,
-        //             };
-        //         }
-        //     }
-        //     Order::Web(order) => {
-        //         if msg.was_finished {
-        //             message = LSMessage::OrderFinished {
-        //                 e_commerce_id: order.e_commerce_id,
-        //                 local_id: self
-        //                     .local_id
-        //                     .ok_or("Should not happen, the local id is already set.".to_string())?,
-        //                 order: msg.order,
-        //             };
-        //         } else {
-        //             message = LSMessage::OrderCancelled {
-        //                 e_commerce_id: order.e_commerce_id.ok_or(
-        //                     "Should not happen, the e-commerce id must be set.".to_string(),
-        //                 )?,
-        //                 local_id: self
-        //                     .local_id
-        //                     .ok_or("Should not happen, the local id is already set.".to_string())?,
-        //                 order: msg.order,
-        //             };
-        //         }
-        //     }
-        // }
+        if let Order::Local(_) = &msg.order {
+            if msg.was_finished {
+                message = LSMessage::OrderFinished {
+                    e_commerce_id: None,
+                    local_id: self
+                        .local_id
+                        .ok_or("Should not happen, the local id must be set.".to_string())?,
+                    order: msg.order,
+                }
+            } else {
+                return Ok(());
+            }
+        } else {
+            return Err("Should not happen, the order must be a web order.".to_string());
+        }
 
-        // info!("[ConnectionHandler] Sending message to LS: {:?}.", message);
+        info!(
+            "[ConnectionHandler] Sending message to LSMiddleman: {:?}.",
+            message
+        );
+        ls_middleman
+            .try_send(SendMessage {
+                msg_to_send: message.to_string().map_err(|err| err.to_string())?,
+            })
+            .map_err(|err| err.to_string())?;
+        if let Some((order, was_finished)) = self.orders_to_send.pop() {
+            ctx.address()
+                .try_send(TrySendFinishedOrder {
+                    order,
+                    was_finished,
+                })
+                .map_err(|err| err.to_string())?;
+        }
+        Ok(())
+    }
+}
 
-        // self.messages_to_send.push(message);
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+struct TrySendFinishedWebOrder {
+    order: Order,
+    was_finished: bool,
+}
+
+impl Handler<TrySendFinishedWebOrder> for ConnectionHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: TrySendFinishedWebOrder, ctx: &mut Context<Self>) -> Self::Result {
+        let ls_middleman = self
+            .ls_middleman
+            .clone()
+            .ok_or("Should not happen, the LSMiddleman must be set".to_string())?;
+        let message;
+
+        if let Order::Web(order) = &msg.order {
+            if msg.was_finished {
+                message = LSMessage::OrderFinished {
+                    e_commerce_id: order.e_commerce_id,
+                    local_id: self
+                        .local_id
+                        .ok_or("Should not happen, the local id must be set.".to_string())?,
+                    order: msg.order,
+                }
+            } else {
+                message = LSMessage::OrderCancelled {
+                    e_commerce_id: order
+                        .e_commerce_id
+                        .ok_or("Should not happen, the e-commerce id must be set.".to_string())?,
+                    local_id: self
+                        .local_id
+                        .ok_or("Should not happen, the local id must be set.".to_string())?,
+                    order: msg.order,
+                }
+            }
+        } else {
+            return Err("Should not happen, the order must be a web order.".to_string());
+        }
+
+        info!(
+            "[ConnectionHandler] Sending message to LSMiddleman: {:?}.",
+            message
+        );
+        ls_middleman
+            .try_send(SendMessage {
+                msg_to_send: message.to_string().map_err(|err| err.to_string())?,
+            })
+            .map_err(|err| err.to_string())?;
+        if let Some((order, was_finished)) = self.orders_to_send.pop() {
+            ctx.address()
+                .try_send(TrySendFinishedOrder {
+                    order,
+                    was_finished,
+                })
+                .map_err(|err| err.to_string())?;
+        }
         Ok(())
     }
 }

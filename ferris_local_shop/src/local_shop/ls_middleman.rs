@@ -47,10 +47,10 @@ impl StreamHandler<Result<String, std::io::Error>> for LSMiddleman {
                 .try_send(HandleMsg { received_msg: msg })
                 .is_err()
             {
-                error!("[LSMiddleman] Error sending msg to handler");
+                error!("[LSMiddleman] Error sending msg to handler.");
             }
         } else if let Err(err) = msg {
-            error!("[LSMiddleman] Error in received msg: {}", err);
+            error!("[LSMiddleman] Error in received msg: {}.", err);
         }
     }
 
@@ -131,14 +131,14 @@ impl Handler<HandleLocalRegisteredMessage> for LSMiddleman {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-struct SendResponse {
-    msg_to_send: String,
+pub struct SendMessage {
+    pub msg_to_send: String,
 }
 
-impl Handler<SendResponse> for LSMiddleman {
+impl Handler<SendMessage> for LSMiddleman {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: SendResponse, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: SendMessage, ctx: &mut Self::Context) -> Self::Result {
         let response = msg.msg_to_send + "\n";
         let writer = self.connected_server_write_stream.clone();
         wrap_future::<_, Self>(async move {

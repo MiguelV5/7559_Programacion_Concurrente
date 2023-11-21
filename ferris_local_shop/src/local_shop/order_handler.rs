@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::local_shop::order_worker;
 use actix::prelude::*;
 use shared::model::order::Order;
-use tracing::{error, info, trace};
+use tracing::{error, info, trace, warn};
 
 use super::{
     connection_handler::{self, ConnectionHandlerActor},
@@ -93,6 +93,21 @@ impl Actor for OrderHandlerActor {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
+pub struct StartUp {}
+
+impl Handler<StartUp> for OrderHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: StartUp, ctx: &mut Context<Self>) -> Self::Result {
+        info!("[OrderHandler] Starting up.");
+        ctx.address()
+            .try_send(TryFindEmptyOrderWorker { curr_worker_id: 0 })
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
 pub struct AddNewOrderWorker {
     pub worker_addr: Addr<OrderWorkerActor>,
 }
@@ -141,20 +156,56 @@ impl Handler<AddNewConnectionHandler> for OrderHandlerActor {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct StartUp {}
+pub struct AddNewWebOrder {
+    pub order: Order,
+}
 
-impl Handler<StartUp> for OrderHandlerActor {
+impl Handler<AddNewWebOrder> for OrderHandlerActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, _: StartUp, _ctx: &mut Context<Self>) -> Self::Result {
-        info!("[OrderHandler] Starting up.");
-        for (id, _) in self.order_workers.iter() {
-            _ctx.address()
-                .try_send(SendOrder { worker_id: *id })
-                .map_err(|err| err.to_string())?;
+    fn handle(&mut self, msg: AddNewWebOrder, ctx: &mut Context<Self>) -> Self::Result {
+        info!("[OrderHandler] Adding new WebOrder.");
+        self.web_orders.push(msg.order.clone());
+        ctx.address()
+            .try_send(TryFindEmptyOrderWorker { curr_worker_id: 0 })
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct TryFindEmptyOrderWorker {
+    curr_worker_id: usize,
+}
+
+impl Handler<TryFindEmptyOrderWorker> for OrderHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: TryFindEmptyOrderWorker, ctx: &mut Context<Self>) -> Self::Result {
+        if msg.curr_worker_id >= self.order_workers.len() {
+            return Ok(());
         }
 
-        Ok(())
+        if let Some(order_worker) = self.order_workers.get(&msg.curr_worker_id) {
+            if order_worker.given_order.is_none() {
+                info!(
+                    "[OrderHandler] The OrderWorker {} is empty.",
+                    msg.curr_worker_id
+                );
+                return ctx
+                    .address()
+                    .try_send(SendOrder {
+                        worker_id: order_worker.id,
+                    })
+                    .map_err(|err| err.to_string());
+            }
+        }
+
+        ctx.address()
+            .try_send(TryFindEmptyOrderWorker {
+                curr_worker_id: msg.curr_worker_id + 1,
+            })
+            .map_err(|err| err.to_string())
     }
 }
 
@@ -299,7 +350,7 @@ impl Handler<HandleFinishedOrder> for OrderHandlerActor {
         if let Order::Web(_) = msg.order {
             if let Some(connection_handler) = &self.connection_handler {
                 connection_handler
-                    .try_send(connection_handler::AddNewFinishedOrder {
+                    .try_send(connection_handler::TrySendFinishedOrder {
                         order: msg.order,
                         was_finished: msg.was_finished,
                     })
@@ -311,9 +362,14 @@ impl Handler<HandleFinishedOrder> for OrderHandlerActor {
         }
 
         if msg.was_finished {
+            trace!(
+                "[OrderHandler] Handling completed local order: {:?}.",
+                msg.order
+            );
+
             if let Some(connection_handler) = &self.connection_handler {
                 connection_handler
-                    .try_send(connection_handler::AddNewFinishedOrder {
+                    .try_send(connection_handler::TrySendFinishedOrder {
                         order: msg.order,
                         was_finished: msg.was_finished,
                     })
@@ -321,7 +377,6 @@ impl Handler<HandleFinishedOrder> for OrderHandlerActor {
             } else {
                 error!("[OrderHandler] No connection handler.");
             }
-            return Ok(());
         }
         Ok(())
     }
