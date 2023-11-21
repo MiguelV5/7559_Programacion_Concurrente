@@ -2,7 +2,7 @@ use actix::{Actor, Addr, Context, Handler, Message};
 use shared::model::order::Order;
 use tracing::warn;
 
-use super::{connection_handler::ConnectionHandler, order_worker::OrderWorker};
+use super::order_worker::OrderWorker;
 
 pub struct OrderHandler {
     orders: Vec<Order>,

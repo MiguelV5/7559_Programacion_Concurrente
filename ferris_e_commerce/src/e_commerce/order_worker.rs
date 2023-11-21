@@ -1,5 +1,5 @@
-use actix::{Actor, Addr, Context, Handler, Message};
-use shared::model::order::Order;
+use actix::{Actor, Addr, Context};
+
 use tracing::info;
 
 use super::{connection_handler::ConnectionHandler, order_handler::OrderHandler};

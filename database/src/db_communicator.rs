@@ -71,11 +71,7 @@ impl Handler<HandleResponse> for DBServer {
 
         let writer = self.db_write_stream.clone();
         wrap_future::<_, Self>(async move {
-            if let Ok(_) = writer
-                .lock()
-                .await
-                .write_all(response_json.as_bytes())
-                .await
+            if (writer.lock().await).write_all(response_json.as_bytes()).await.is_ok()
             {
                 info!("Response sent successfully: {:?}", response);
             } else {

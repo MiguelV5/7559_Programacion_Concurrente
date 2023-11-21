@@ -2,7 +2,7 @@ use actix::{Actor, Addr, Context, Handler, Message};
 use shared::model::{
     db_message_body::DatabaseMessageBody,
     db_request::{DatabaseRequest, RequestCategory, RequestType},
-    db_response::{self, DatabaseResponse, ResponseStatus},
+    db_response::{DatabaseResponse, ResponseStatus},
 };
 
 use crate::{
