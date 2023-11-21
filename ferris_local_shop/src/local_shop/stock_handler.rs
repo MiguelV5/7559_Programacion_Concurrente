@@ -4,9 +4,14 @@ use shared::model::stock_product::Product;
 use std::{collections::HashMap, thread, time};
 use tracing::{error, trace};
 
-use super::order_worker::{
-    OrderWorkerActor, StockNoProduct, StockProductGiven, StockProductReserved,
-    StockReservedProductGiven,
+use crate::local_shop::connection_handler::ResponseAllStockMessage;
+
+use super::{
+    connection_handler::ConnectionHandlerActor,
+    order_worker::{
+        OrderWorkerActor, StockNoProduct, StockProductGiven, StockProductReserved,
+        StockReservedProductGiven,
+    },
 };
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -205,5 +210,25 @@ impl Handler<UnreserveProduct> for StockHandlerActor {
 
         error!("Should not happen, the reserved product must be in the reserved stock.");
         Err("Should not happen, the reserved product must be in the reserved stock.".to_string())
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<(), String>")]
+pub struct AskAllStock {
+    pub connection_handler_addr: Addr<ConnectionHandlerActor>,
+}
+
+impl Handler<AskAllStock> for StockHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: AskAllStock, _ctx: &mut SyncContext<Self>) -> Self::Result {
+        trace!("[StockHandler] Counting stock.");
+
+        msg.connection_handler_addr
+            .try_send(ResponseAllStockMessage {
+                stock: self.stock.clone(),
+            })
+            .map_err(|err| err.to_string())
     }
 }

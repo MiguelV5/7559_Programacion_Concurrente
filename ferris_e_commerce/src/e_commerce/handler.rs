@@ -53,7 +53,8 @@ async fn start_async(
     let (tx_from_input_to_sl, rx_from_input_to_sl) = channel::<String>();
     let (tx_from_input_to_ss, rx_from_input_to_ss) = channel::<String>();
 
-    let (order_handler, connection_handler) = start_actors(orders, servers_listening_port).await?;
+    let (order_handler, connection_handler) =
+        start_actors(orders, servers_listening_port, locals_listening_port).await?;
     sender_of_order_handler
         .send(order_handler.clone())
         .map_err(|_| "Error sending order handler")?;
@@ -85,12 +86,12 @@ async fn start_async(
 
 async fn start_actors(
     orders: Vec<Order>,
-    servers_listening_port: u16,
+    ss_id: u16,
+    sl_id: u16,
 ) -> Result<(Addr<OrderHandler>, Addr<ConnectionHandler>), Box<dyn Error>> {
     let order_handler = OrderHandler::new(&orders).start();
 
-    let connection_handler =
-        ConnectionHandler::new(servers_listening_port, order_handler.clone()).start();
+    let connection_handler = ConnectionHandler::new(order_handler.clone(), ss_id, sl_id).start();
 
     let order_worker =
         OrderWorker::new(1, order_handler.clone(), connection_handler.clone()).start();
@@ -106,7 +107,7 @@ async fn start_actors(
         })
         .await?;
 
-    return Ok((order_handler, connection_handler));
+    Ok((order_handler, connection_handler))
 }
 
 fn parse_given_orders(orders_file_path: &str) -> Result<Vec<Order>, Box<dyn Error>> {

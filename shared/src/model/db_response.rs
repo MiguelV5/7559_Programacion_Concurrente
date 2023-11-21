@@ -1,4 +1,3 @@
-use actix::Message;
 use serde::{Deserialize, Serialize};
 
 use super::db_message_body::DatabaseMessageBody;

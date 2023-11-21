@@ -27,6 +27,7 @@ impl DatabaseRequest {
 pub enum RequestCategory {
     ProductStock,
     PendingDelivery,
+    NewLocalId,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -34,5 +35,5 @@ pub enum RequestType {
     GetOne,
     GetAll,
     Post,
-    Delete,
+    None,
 }

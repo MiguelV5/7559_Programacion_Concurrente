@@ -6,7 +6,7 @@ use actix::{
 use actix::{ActorContext, Addr, AsyncContext};
 use shared::model::order::Order;
 use shared::model::sl_message::SLMessage;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 use tokio::io::AsyncWriteExt;
 use tokio::io::WriteHalf;
@@ -42,7 +42,6 @@ impl LSMiddleman {
 impl StreamHandler<Result<String, std::io::Error>> for LSMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
-            info!("[LSMiddleman] Received msg: {}", msg);
             if ctx
                 .address()
                 .try_send(HandleOnlineMsg { received_msg: msg })
@@ -90,49 +89,48 @@ impl Handler<HandleOnlineMsg> for LSMiddleman {
 
     fn handle(&mut self, msg: HandleOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
         match SLMessage::from_string(&msg.received_msg).map_err(|err| err.to_string())? {
-            SLMessage::LeaderMessage { leader_ip } => {
-                ctx.address()
-                    .try_send(HandleLeaderMessage { leader_ip })
-                    .map_err(|err| err.to_string())?;
+            SLMessage::LeaderMessage { leader_id } => ctx
+                .address()
+                .try_send(HandleLeaderMessage { leader_id })
+                .map_err(|err| err.to_string()),
+            SLMessage::DontHaveLeaderYet => {
+                info!("Don't have leader yet.");
+                Ok(())
             }
-            SLMessage::LocalRegisteredMessage { local_id } => {
-                ctx.address()
-                    .try_send(HandleLocalRegisteredMessage { local_id })
-                    .map_err(|err| err.to_string())?;
-            }
-            SLMessage::LocalLoggedInMessage => {
-                ctx.address()
-                    .try_send(HandleLocalLoggedInMessage {})
-                    .map_err(|err| err.to_string())?;
-            }
-            SLMessage::WorkNewOrder {
-                e_commerce_id,
-                order,
-            } => {
-                info!(
-                    "[LSMiddleman] Work new order received: {} {:?}.",
-                    e_commerce_id, order
-                );
-            }
-        };
-        Ok(())
+            SLMessage::LocalRegisteredMessage { local_id } => ctx
+                .address()
+                .try_send(HandleLocalRegisteredMessage { local_id })
+                .map_err(|err| err.to_string()),
+            SLMessage::LocalLoggedInMessage => ctx
+                .address()
+                .try_send(HandleLocalLoggedInMessage {})
+                .map_err(|err| err.to_string()),
+            SLMessage::AskAllStock => ctx
+                .address()
+                .try_send(HandleAskAllStockMessage {})
+                .map_err(|err| err.to_string()),
+            SLMessage::WorkNewOrder { order } => ctx
+                .address()
+                .try_send(HandleWorkNewOrderMessage { order })
+                .map_err(|err| err.to_string()),
+        }
     }
 }
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 struct HandleLeaderMessage {
-    leader_ip: String,
+    leader_id: u16,
 }
 
 impl Handler<HandleLeaderMessage> for LSMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: HandleLeaderMessage, _: &mut Self::Context) -> Self::Result {
-        info!("[LSMiddleman] Leader message received: {}.", msg.leader_ip);
+        info!("[LSMiddleman] Leader message received: {}.", msg.leader_id);
         self.connection_handler_addr
             .try_send(LeaderMessage {
-                leader_ip: msg.leader_ip,
+                leader_ip: msg.leader_id,
             })
             .map_err(|err| err.to_string())
     }
@@ -141,14 +139,17 @@ impl Handler<HandleLeaderMessage> for LSMiddleman {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 struct HandleLocalRegisteredMessage {
-    local_id: usize,
+    local_id: u16,
 }
 
 impl Handler<HandleLocalRegisteredMessage> for LSMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: HandleLocalRegisteredMessage, _: &mut Self::Context) -> Self::Result {
-        info!("[LSMiddleman] Local registered with id {}.", msg.local_id);
+        info!(
+            "[LSMiddleman] Local trying to register received: {}.",
+            msg.local_id
+        );
 
         self.connection_handler_addr
             .try_send(connection_handler::LocalRegistered {
@@ -174,8 +175,21 @@ impl Handler<HandleLocalLoggedInMessage> for LSMiddleman {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
+struct HandleAskAllStockMessage {}
+
+impl Handler<HandleAskAllStockMessage> for LSMiddleman {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: HandleAskAllStockMessage, _: &mut Self::Context) -> Self::Result {
+        self.connection_handler_addr
+            .try_send(connection_handler::AskAllStockMessage {})
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
 struct HandleWorkNewOrderMessage {
-    e_commerce_id: usize,
     order: Order,
 }
 
@@ -184,10 +198,7 @@ impl Handler<HandleWorkNewOrderMessage> for LSMiddleman {
 
     fn handle(&mut self, msg: HandleWorkNewOrderMessage, _: &mut Self::Context) -> Self::Result {
         self.connection_handler_addr
-            .try_send(connection_handler::WorkNewOrder {
-                e_commerce_id: msg.e_commerce_id,
-                order: msg.order,
-            })
+            .try_send(connection_handler::WorkNewOrder { order: msg.order })
             .map_err(|err| err.to_string())
     }
 }
@@ -212,9 +223,9 @@ impl Handler<SendMessage> for LSMiddleman {
                 .await
                 .is_ok()
             {
-                info!("[LSMiddleman] Envio de mensaje realizado.");
+                trace!("[LSMiddleman] Send msg finished.");
             } else {
-                error!("[LSMiddleman] Error al escribir en el stream.")
+                error!("[LSMiddleman] Error while writing to stream")
             };
         })
         .spawn(ctx);

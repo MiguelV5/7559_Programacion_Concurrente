@@ -51,7 +51,7 @@ pub fn start(
 
     input_join_handle
         .join()
-        .map_err(|_| LocalShopError::SystemError(format!("Error joining input handler thread.")))?
+        .map_err(|_| LocalShopError::SystemError("Error joining input handler thread.".to_string()))?
         .map_err(|err| LocalShopError::SystemError(err.to_string()))
 }
 
@@ -63,8 +63,12 @@ async fn start_aync(
 ) -> Result<(), LocalShopError> {
     let stock_handler_addr = SyncArbiter::start(1, move || StockHandlerActor::new(stock.clone()));
     let order_handler_addr = OrderHandlerActor::new(local_orders).start();
-    start_workers(num_workers, order_handler_addr.clone(), stock_handler_addr)?;
-    let connection_handler = start_connection_handler(order_handler_addr.clone())?;
+    start_workers(
+        num_workers,
+        order_handler_addr.clone(),
+        stock_handler_addr.clone(),
+    )?;
+    let connection_handler = start_connection_handler(order_handler_addr, stock_handler_addr)?;
 
     tx_connection_addr
         .send(connection_handler.clone())
@@ -95,8 +99,10 @@ fn start_workers(
 
 fn start_connection_handler(
     order_handler_addr: Addr<OrderHandlerActor>,
+    stock_handler_addr: Addr<StockHandlerActor>,
 ) -> Result<Addr<ConnectionHandlerActor>, LocalShopError> {
-    let connection_handler = ConnectionHandlerActor::new(order_handler_addr.clone()).start();
+    let connection_handler =
+        ConnectionHandlerActor::new(order_handler_addr.clone(), stock_handler_addr).start();
     order_handler_addr
         .try_send(order_handler::AddNewConnectionHandler {
             connection_handler_addr: connection_handler.clone(),

@@ -4,7 +4,7 @@ use actix::{
     dev::ContextFutureSpawner, fut::wrap_future, Actor, Context, Handler, Message, StreamHandler,
 };
 use actix::{ActorContext, Addr, AsyncContext};
-use shared::model::order::{Order, WebOrder};
+use shared::model::order::Order;
 use shared::model::ss_message::SSMessage;
 use tracing::{error, info};
 

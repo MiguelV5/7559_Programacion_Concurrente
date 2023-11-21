@@ -1,6 +1,6 @@
-use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
+use actix::{Actor, Addr, Context, Handler, Message};
 use shared::model::{order::Order, stock_product::Product};
-use tracing::{error, info};
+use tracing::info;
 
 use crate::e_commerce::connection_handler;
 

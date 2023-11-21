@@ -192,12 +192,11 @@ impl Handler<TryFindEmptyOrderWorker> for OrderHandlerActor {
                     "[OrderHandler] The OrderWorker {} is empty.",
                     msg.curr_worker_id
                 );
-                return ctx
-                    .address()
+                ctx.address()
                     .try_send(SendOrder {
                         worker_id: order_worker.id,
                     })
-                    .map_err(|err| err.to_string());
+                    .map_err(|err| err.to_string())?;
             }
         }
 

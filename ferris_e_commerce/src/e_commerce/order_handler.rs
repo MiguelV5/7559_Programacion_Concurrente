@@ -6,7 +6,7 @@ use tracing::{info, warn};
 
 use crate::e_commerce::order_worker;
 
-use super::{connection_handler::ConnectionHandler, order_worker::OrderWorker};
+use super::order_worker::OrderWorker;
 
 pub struct OrderHandler {
     orders: Vec<Order>,
