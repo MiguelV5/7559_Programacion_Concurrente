@@ -117,6 +117,15 @@ impl DBHandlerActor {
                             ),
                         };
                     }
+                    if let DatabaseMessageBody::GlobalStock(local_shop_id, local_shop_stock) = request.body {
+                        self.global_stock.add_local_shop_stock(local_shop_id, local_shop_stock);
+                        DatabaseResponse::new(ResponseStatus::Ok, DatabaseMessageBody::None)
+                    } else {
+                        DatabaseResponse::new(
+                            ResponseStatus::Error("Bad Request".to_string()),
+                            DatabaseMessageBody::None,
+                        )
+                    };
                     DatabaseResponse::new(
                         ResponseStatus::Error("Bad Request".to_string()),
                         DatabaseMessageBody::None,
