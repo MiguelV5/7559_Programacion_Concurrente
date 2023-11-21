@@ -16,8 +16,8 @@ use tracing::{error, info, warn};
 use crate::e_commerce::connection_handler::RemoveSLMiddleman;
 
 use super::connection_handler::{
-    AskLeaderMessage, ConnectionHandler, LoginLocalMessage, OrderCancelled, OrderCompleted,
-    RegisterLocalMessage, StockMessage,
+    AskLeaderMessage, ConnectionHandler, LoginLocalMessage, OrderCancelledFromLocal,
+    OrderCompletedFromLocal, RegisterLocalMessage, StockMessage,
 };
 
 pub struct SLMiddleman {
@@ -215,7 +215,7 @@ impl Handler<HandleOrderCompletedMessage> for SLMiddleman {
 
     fn handle(&mut self, msg: HandleOrderCompletedMessage, _: &mut Self::Context) -> Self::Result {
         self.connection_handler_addr
-            .try_send(OrderCompleted { order: msg.order })
+            .try_send(OrderCompletedFromLocal { order: msg.order })
             .map_err(|err| err.to_string())?;
         Ok(())
     }
@@ -232,7 +232,7 @@ impl Handler<HandleOrderCancelledMessage> for SLMiddleman {
 
     fn handle(&mut self, msg: HandleOrderCancelledMessage, _: &mut Self::Context) -> Self::Result {
         self.connection_handler_addr
-            .try_send(OrderCancelled { order: msg.order })
+            .try_send(OrderCancelledFromLocal { order: msg.order })
             .map_err(|err| err.to_string())?;
         Ok(())
     }

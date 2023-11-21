@@ -295,7 +295,7 @@ pub struct AskAllStockMessage {}
 impl Handler<AskAllStockMessage> for ConnectionHandlerActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: AskAllStockMessage, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _: AskAllStockMessage, ctx: &mut Context<Self>) -> Self::Result {
         info!("[ConnectionHandler] Asking for all stock.");
         self.stock_handler
             .try_send(stock_handler::AskAllStock {

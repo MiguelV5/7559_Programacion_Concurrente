@@ -1,3 +1,5 @@
+use std::u16::MAX;
+
 use serde::{Deserialize, Serialize};
 
 use super::stock_product::Product;
@@ -16,14 +18,14 @@ impl Order {
         }
     }
 
-    pub fn is_local(&mut self) -> bool {
+    pub fn is_local(&self) -> bool {
         match self {
             Order::Local(local_order) => local_order.is_local(),
             Order::Web(web_order) => web_order.is_local(),
         }
     }
 
-    pub fn is_web(&mut self) -> bool {
+    pub fn is_web(&self) -> bool {
         match self {
             Order::Local(local_order) => local_order.is_web(),
             Order::Web(web_order) => web_order.is_web(),
@@ -37,9 +39,16 @@ impl Order {
         }
     }
 
-    pub fn set_e_commerce_id(&mut self, e_commerce_id: u16) {
+    pub fn set_ss_id(&mut self, ss_id: u16) {
         match self {
-            Order::Web(web_order) => web_order.set_e_commerce_id(e_commerce_id),
+            Order::Web(web_order) => web_order.set_ss_id(ss_id),
+            _ => {}
+        }
+    }
+
+    pub fn set_sl_id(&mut self, ss_id: u16) {
+        match self {
+            Order::Web(web_order) => web_order.set_sl_id(ss_id),
             _ => {}
         }
     }
@@ -50,11 +59,40 @@ impl Order {
             _ => {}
         }
     }
+
+    pub fn get_local_id(&self) -> Option<u16> {
+        match self {
+            Order::Local(local_order) => local_order.local_id,
+            Order::Web(web_order) => web_order.local_id,
+        }
+    }
+
+    pub fn get_worker_id_web(&self) -> Option<u16> {
+        match self {
+            Order::Web(web_order) => web_order.worker_id,
+            _ => Some(MAX),
+        }
+    }
+
+    pub fn get_ss_id_web(&self) -> Option<u16> {
+        match self {
+            Order::Web(web_order) => web_order.ss_id,
+            _ => Some(MAX),
+        }
+    }
+
+    pub fn get_sl_id_web(&self) -> Option<u16> {
+        match self {
+            Order::Web(web_order) => web_order.sl_id,
+            _ => Some(MAX),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebOrder {
-    pub e_commerce_id: Option<u16>,
+    pub ss_id: Option<u16>,
+    pub sl_id: Option<u16>,
     pub local_id: Option<u16>,
     pub worker_id: Option<u16>,
     products: Vec<Product>,
@@ -63,7 +101,8 @@ pub struct WebOrder {
 impl WebOrder {
     pub fn new(products: Vec<Product>) -> Self {
         Self {
-            e_commerce_id: None,
+            ss_id: None,
+            sl_id: None,
             local_id: None,
             worker_id: None,
             products,
@@ -86,8 +125,12 @@ impl WebOrder {
         self.local_id = Some(local_id);
     }
 
-    pub fn set_e_commerce_id(&mut self, e_commerce_id: u16) {
-        self.e_commerce_id = Some(e_commerce_id);
+    pub fn set_ss_id(&mut self, ss_id: u16) {
+        self.ss_id = Some(ss_id);
+    }
+
+    pub fn set_sl_id(&mut self, sl_id: u16) {
+        self.sl_id = Some(sl_id);
     }
 
     pub fn set_worker_id(&mut self, worker_id: u16) {

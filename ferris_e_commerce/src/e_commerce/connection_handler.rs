@@ -4,7 +4,7 @@ use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
 use shared::model::{
     db_request::DatabaseRequest, order::Order, sl_message::SLMessage, stock_product::Product,
 };
-use tracing::info;
+use tracing::{error, info};
 
 use crate::e_commerce::sl_middleman::{self, SetUpId};
 
@@ -220,37 +220,157 @@ impl Handler<StockMessage> for ConnectionHandler {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct OrderCompleted {
+pub struct OrderCompletedFromLocal {
     pub order: Order,
 }
 
-impl Handler<OrderCompleted> for ConnectionHandler {
+impl Handler<OrderCompletedFromLocal> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: OrderCompleted, ctx: &mut Self::Context) -> Self::Result {
-        info!("[ConnectionHandler] New Order Finished.");
-        // Si es web y es mia, tengo que pasarsela al worker correspondiente
-        // Si es web pero no es mia, es porque soy lider, la tengo que delegar y mandar a la db
-        // Si es una orden de local, es porque soy el lider y la tengo que madnar a la db
+    fn handle(&mut self, msg: OrderCompletedFromLocal, ctx: &mut Self::Context) -> Self::Result {
+        if msg.order.is_web() {
+            if msg.order.get_ss_id_web() == Some(self.ss_id)
+                && msg.order.get_sl_id_web() == Some(self.sl_id)
+            {
+                info!(
+                    "[ConnectionHandler] Order completed from web and is mine: {:?}.",
+                    msg.order
+                );
+                ctx.address()
+                    .try_send(SendOrderToOrderWorker {
+                        order: msg.order.clone(),
+                        was_completed: true,
+                    })
+                    .map_err(|err| err.to_string())?;
+            } else {
+                info!(
+                    "[ConnectionHandler] Order completed from web and is not mine: {:?}.",
+                    msg.order
+                );
+                ctx.address()
+                    .try_send(SendOrderToOtherServer {
+                        order: msg.order.clone(),
+                        was_completed: true,
+                    })
+                    .map_err(|err| err.to_string())?;
+            }
+        } else {
+            info!(
+                "[ConnectionHandler] Order completed from local: {:?}.",
+                msg.order
+            );
+        }
 
+        ctx.address()
+            .try_send(SendOrderToDataBase {
+                order: msg.order,
+                was_completed: true,
+            })
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct OrderCancelledFromLocal {
+    pub order: Order,
+}
+
+impl Handler<OrderCancelledFromLocal> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: OrderCancelledFromLocal, ctx: &mut Self::Context) -> Self::Result {
+        if msg.order.is_local() {
+            error!("[ConnectionHandler] Order cancelled from local.");
+            return Err("Order cancelled from local.".to_string());
+        }
+
+        if msg.order.get_ss_id_web() == Some(self.ss_id)
+            && msg.order.get_sl_id_web() == Some(self.sl_id)
+        {
+            info!(
+                "[ConnectionHandler] Order cancelled from web and is mine: {:?}.",
+                msg.order
+            );
+            ctx.address()
+                .try_send(SendOrderToOrderWorker {
+                    order: msg.order.clone(),
+                    was_completed: false,
+                })
+                .map_err(|err| err.to_string())
+        } else {
+            info!(
+                "[ConnectionHandler] Order cancelled from web and is not mine: {:?}.",
+                msg.order
+            );
+            ctx.address()
+                .try_send(SendOrderToOtherServer {
+                    order: msg.order.clone(),
+                    was_completed: false,
+                })
+                .map_err(|err| err.to_string())
+        }
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct SendOrderToOrderWorker {
+    pub order: Order,
+    pub was_completed: bool,
+}
+
+impl Handler<SendOrderToOrderWorker> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: SendOrderToOrderWorker, _: &mut Self::Context) -> Self::Result {
+        if let Some(order_worker_id) = msg.order.get_worker_id_web() {
+            let order_worker = self
+                .order_workers
+                .get(order_worker_id as usize)
+                .ok_or_else(|| "OrderWorker not found.".to_string())?;
+            info!(
+                "[ConnectionHandler] Sending order to OrderWorker: {:?}.",
+                msg.order
+            );
+            Ok(())
+        } else {
+            error!("[ConnectionHandler] OrderWorker not found.");
+            Err("OrderWorker not found.".to_string())
+        }
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct SendOrderToOtherServer {
+    pub order: Order,
+    pub was_completed: bool,
+}
+
+impl Handler<SendOrderToOtherServer> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: SendOrderToOtherServer, _: &mut Self::Context) -> Self::Result {
         Ok(())
     }
 }
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct OrderCancelled {
+pub struct SendOrderToDataBase {
     pub order: Order,
+    pub was_completed: bool,
 }
 
-impl Handler<OrderCancelled> for ConnectionHandler {
+impl Handler<SendOrderToDataBase> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: OrderCancelled, ctx: &mut Self::Context) -> Self::Result {
-        info!("[ConnectionHandler] New Order Finished.");
-        // Si es web y es mia, tengo que pasarsela al worker correspondiente
-        // Si es web pero no es mia, es porque soy lider, la tengo que delegar
-
+    fn handle(&mut self, msg: SendOrderToDataBase, _: &mut Self::Context) -> Self::Result {
+        info!(
+            "[ConnectionHandler] Sending order to DataBase: {:?}.",
+            msg.order
+        );
         Ok(())
     }
 }
