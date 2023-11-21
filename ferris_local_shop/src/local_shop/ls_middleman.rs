@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
-use actix::AsyncContext;
 use actix::{
     dev::ContextFutureSpawner, fut::wrap_future, Actor, Context, Handler, Message, StreamHandler,
 };
+use actix::{ActorContext, Addr, AsyncContext};
 use shared::model::sl_message::SLMessage;
-use tokio::sync::mpsc::Sender;
 use tracing::{error, info};
 
 use tokio::io::AsyncWriteExt;
@@ -13,12 +12,14 @@ use tokio::io::WriteHalf;
 use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::Mutex;
 
-use crate::local_shop::constants::CONNECTION_FINISHED;
+use crate::local_shop::connection_handler::RemoveLSMiddleman;
+
+use super::connection_handler::ConnectionHandlerActor;
 
 #[derive(Debug)]
 pub struct LSMiddleman {
     connected_server_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
-    tx_close_connection: Sender<String>,
+    connection_handler_addr: Addr<ConnectionHandlerActor>,
 }
 
 impl Actor for LSMiddleman {
@@ -28,11 +29,11 @@ impl Actor for LSMiddleman {
 impl LSMiddleman {
     pub fn new(
         connected_server_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
-        tx_close_connection: Sender<String>,
+        connection_handler_addr: Addr<ConnectionHandlerActor>,
     ) -> Self {
         Self {
             connected_server_write_stream,
-            tx_close_connection,
+            connection_handler_addr,
         }
     }
 }
@@ -53,15 +54,27 @@ impl StreamHandler<Result<String, std::io::Error>> for LSMiddleman {
         }
     }
 
-    fn finished(&mut self, _: &mut Self::Context) {
+    fn finished(&mut self, ctx: &mut Self::Context) {
         info!("[LSMiddleman] Finished.");
-        if self
-            .tx_close_connection
-            .try_send(CONNECTION_FINISHED.to_string())
-            .is_ok()
-        {
-            info!("[LSMiddleman] Connection finished sent.");
-        }
+        self.connection_handler_addr
+            .try_send(RemoveLSMiddleman {})
+            .map_err(|err| err.to_string())
+            .unwrap();
+        ctx.stop();
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct CloseConnection {}
+
+impl Handler<CloseConnection> for LSMiddleman {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: CloseConnection, ctx: &mut Context<Self>) -> Self::Result {
+        info!("[LSMiddleman] Closing connection.");
+        ctx.stop();
+        Ok(())
     }
 }
 
@@ -110,11 +123,7 @@ struct HandleLocalRegisteredMessage {
 impl Handler<HandleLocalRegisteredMessage> for LSMiddleman {
     type Result = Result<(), String>;
 
-    fn handle(
-        &mut self,
-        msg: HandleLocalRegisteredMessage,
-        ctx: &mut Self::Context,
-    ) -> Self::Result {
+    fn handle(&mut self, msg: HandleLocalRegisteredMessage, _: &mut Self::Context) -> Self::Result {
         info!("[LSMiddleman] Local registered with id {}.", msg.local_id);
         Ok(())
     }

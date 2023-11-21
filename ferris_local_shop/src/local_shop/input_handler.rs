@@ -1,11 +1,7 @@
 use super::connection_handler::ConnectionHandlerActor;
-use super::order_handler::OrderHandlerActor;
 use crate::local_shop::connection_handler;
-use crate::local_shop::constants::*;
-use crate::local_shop::order_handler;
 use actix::prelude::*;
-use shared::model::constants::EXIT_MSG;
-use shared::model::constants::START_ORDERS_MSG;
+use shared::model::constants::*;
 use std::error::Error;
 use std::fmt;
 use std::sync::mpsc::Receiver;
@@ -47,10 +43,18 @@ pub fn setup_input_listener(
                 order_handler
                     .try_send(connection_handler::StartUp {})
                     .map_err(|err| InputError::SendError(err.to_string()))?;
+            } else if line == CLOSE_CONNECTION_MSG {
+                order_handler
+                    .try_send(connection_handler::StopConnection {})
+                    .map_err(|err| InputError::SendError(err.to_string()))?;
+            } else if line == WAKE_UP_CONNECTION {
+                order_handler
+                    .try_send(connection_handler::WakeUpConnection {})
+                    .map_err(|err| InputError::SendError(err.to_string()))?;
             } else {
                 warn!(
-                    "[InputHandler] Unknown command. Available commands: {}, {}.",
-                    EXIT_MSG, START_ORDERS_MSG
+                    "[InputHandler] Unknown command. Available commands: {}, {}. {}, {}.",
+                    EXIT_MSG, START_ORDERS_MSG, CLOSE_CONNECTION_MSG, WAKE_UP_CONNECTION
                 );
             }
         }

@@ -1,7 +1,10 @@
-use actix::{Actor, Addr, Context, Handler, Message};
+use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
 use actix_rt::System;
 use shared::model::order::Order;
-use tracing::{error, info};
+use tokio::sync::mpsc::Sender;
+use tracing::{error, info, warn};
+
+use crate::local_shop::{constants::WAKE_UP, ls_middleman::CloseConnection};
 
 use super::{
     ls_middleman::LSMiddleman,
@@ -15,6 +18,7 @@ pub struct ConnectionHandlerActor {
 
     order_handler: Addr<OrderHandlerActor>,
     ls_middleman: Option<Addr<LSMiddleman>>,
+    tx_close_connection: Option<Sender<String>>,
 
     orders_to_send: Vec<(Order, bool)>,
 }
@@ -26,6 +30,7 @@ impl ConnectionHandlerActor {
             local_id: None,
             order_handler,
             ls_middleman: None,
+            tx_close_connection: None,
             orders_to_send: Vec::new(),
         }
     }
@@ -33,22 +38,6 @@ impl ConnectionHandlerActor {
 
 impl Actor for ConnectionHandlerActor {
     type Context = Context<Self>;
-}
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-pub struct AddLSMiddleman {
-    pub ls_middleman: Addr<LSMiddleman>,
-}
-
-impl Handler<AddLSMiddleman> for ConnectionHandlerActor {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, msg: AddLSMiddleman, _: &mut Context<Self>) -> Self::Result {
-        info!("[ConnectionHandler] Adding new LsMiddleman.");
-        self.ls_middleman = Some(msg.ls_middleman);
-        Ok(())
-    }
 }
 
 #[derive(Message, Debug, PartialEq, Eq)]
@@ -78,6 +67,20 @@ impl Handler<CloseSystem> for ConnectionHandlerActor {
             info!("[ConnectionHandlerActor] Closing system.");
             system.stop();
             self.am_alive = false;
+            if let Some(ls_middleman) = &self.ls_middleman {
+                ls_middleman
+                    .try_send(CloseConnection {})
+                    .map_err(|err| err.to_string())?;
+            } else {
+                warn!("[ConnectionHandler] Cannot close connection, no LsMiddleman found.")
+            }
+            if let Some(tx_close_connection) = &self.tx_close_connection {
+                tx_close_connection
+                    .try_send(WAKE_UP.to_string())
+                    .map_err(|err| err.to_string())?;
+            } else {
+                warn!("[ConnectionHandler] Cannot close connection, no tx_close_connection found.")
+            }
             return Ok(());
         }
         error!("[ConnectionHandlerActor] Error closing system, cannot take current system.");
@@ -94,6 +97,86 @@ impl Handler<AskAlive> for ConnectionHandlerActor {
 
     fn handle(&mut self, _: AskAlive, _: &mut Context<Self>) -> Self::Result {
         self.am_alive
+    }
+}
+
+#[derive(Message, Debug)]
+#[rtype(result = "Result<(), String>")]
+pub struct AddLSMiddleman {
+    pub ls_middleman: Addr<LSMiddleman>,
+    pub tx_close_connection: Sender<String>,
+}
+
+impl Handler<AddLSMiddleman> for ConnectionHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: AddLSMiddleman, _: &mut Context<Self>) -> Self::Result {
+        info!("[ConnectionHandler] Adding new LsMiddleman.");
+        self.ls_middleman = Some(msg.ls_middleman);
+        self.tx_close_connection = Some(msg.tx_close_connection);
+        Ok(())
+    }
+}
+
+#[derive(Message, Debug)]
+#[rtype(result = "Result<(), String>")]
+pub struct RemoveLSMiddleman {}
+
+impl Handler<RemoveLSMiddleman> for ConnectionHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: RemoveLSMiddleman, ctx: &mut Context<Self>) -> Self::Result {
+        info!("[ConnectionHandler] Removing LsMiddleman.");
+        self.ls_middleman = None;
+        ctx.address()
+            .try_send(WakeUpConnection {})
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    }
+}
+
+#[derive(Message, Debug)]
+#[rtype(result = "Result<(), String>")]
+pub struct StopConnection {}
+
+impl Handler<StopConnection> for ConnectionHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: StopConnection, _: &mut Context<Self>) -> Self::Result {
+        if let Some(ls_middleman) = self.ls_middleman.take() {
+            ls_middleman
+                .try_send(CloseConnection {})
+                .map_err(|err| err.to_string())?;
+            info!("[ConnectionHandler] Connection stopped.");
+            return Ok(());
+        }
+
+        warn!(
+            "[ConnectionHandler] Cannot stop connection, no LsMiddleman found: {:?}.",
+            msg
+        );
+        Ok(())
+    }
+}
+
+#[derive(Message, Debug)]
+#[rtype(result = "Result<(), String>")]
+pub struct WakeUpConnection {}
+
+impl Handler<WakeUpConnection> for ConnectionHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: WakeUpConnection, _: &mut Context<Self>) -> Self::Result {
+        info!("[ConnectionHandler] Waking up connection.");
+        if let Some(tx_close_connection) = &self.tx_close_connection {
+            tx_close_connection
+                .try_send(WAKE_UP.to_string())
+                .map_err(|err| err.to_string())?;
+            return Ok(());
+        }
+
+        warn!("[ConnectionHandler] Cannot wake up connection, connection is already up.");
+        Ok(())
     }
 }
 
@@ -127,7 +210,7 @@ struct SendFinishedOrder {
 impl Handler<SendFinishedOrder> for ConnectionHandlerActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: SendFinishedOrder, _: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _: SendFinishedOrder, _: &mut Context<Self>) -> Self::Result {
         if self.local_id.is_none() || self.ls_middleman.is_none() {
             return Err(
                 "Should not happen, the local id and the LSMiddleman must be set".to_string(),

@@ -55,6 +55,11 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
             }
         }
     }
+
+    fn finished(&mut self, ctx: &mut Self::Context) {
+        info!("Connection finished.");
+        ctx.stop();
+    }
 }
 
 // ====================================================================

@@ -8,5 +8,6 @@ pub const CONNECTION_FINISHED: &str = "Conection finished";
 
 // ==================== COMMANDS ====================
 pub const CLOSE_CONNECTION_MSG: &str = "cc";
+pub const WAKE_UP_CONNECTION: &str = "rc";
 pub const EXIT_MSG: &str = "q";
 pub const START_ORDERS_MSG: &str = "s";

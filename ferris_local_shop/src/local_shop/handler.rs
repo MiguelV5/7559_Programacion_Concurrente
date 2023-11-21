@@ -9,7 +9,6 @@ use shared::{
     model::{order::Order, stock_product::Product},
     parsers::{orders_parser::OrdersParser, stock_parser::StockParser},
 };
-use tokio::join;
 
 use crate::LocalShopError;
 
