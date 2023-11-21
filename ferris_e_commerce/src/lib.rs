@@ -102,16 +102,14 @@ fn check_if_given_ports_are_valid(
         return Err(EcommerceError::ArgsParsingError(String::from(
             "Servers and locals listening ports must be different",
         )));
-    } else if let Err(_) =
-        std::net::TcpListener::bind(format!("{}:{}", LOCALHOST, servers_listening_port))
-    {
+    }
+    if std::net::TcpListener::bind(format!("{}:{}", LOCALHOST, servers_listening_port)).is_err() {
         error!("Locals listening port is already in use");
         return Err(EcommerceError::ArgsParsingError(String::from(
             "Invalid servers listening port",
         )));
-    } else if let Err(_) =
-        std::net::TcpListener::bind(format!("{}:{}", LOCALHOST, locals_listening_port))
-    {
+    }
+    if std::net::TcpListener::bind(format!("{}:{}", LOCALHOST, locals_listening_port)).is_err() {
         error!("Servers listening port is already in use");
         return Err(EcommerceError::ArgsParsingError(String::from(
             "Invalid locals listening port",

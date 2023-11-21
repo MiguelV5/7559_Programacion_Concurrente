@@ -69,7 +69,7 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
 
     fn handle(&mut self, msg: HandleOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
         match SSMessage::from_string(&msg.received_msg).map_err(|err| err.to_string())? {
-            SSMessage::ElectLeader { requestor_id } => {
+            SSMessage::ElectLeader { requestor_id: _ } => {
                 let ack = SSMessage::AckElectLeader
                     .to_string()
                     .map_err(|err| err.to_string())?;
@@ -92,12 +92,18 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
                     })
                     .map_err(|err| err.to_string())?;
             }
-            SSMessage::DelegateOrderToLeader { order } => {}
-            SSMessage::AckDelegateOrderToLeader { order } => {}
+            SSMessage::DelegateOrderToLeader { order } => {
+                info!("ORDER DELEGATED: {:?}", order);
+            }
+            SSMessage::AckDelegateOrderToLeader { order } => {
+                info!("ORDER DELEGATED ACK: {:?}", order);
+            }
             SSMessage::SolvedPrevDelegatedOrder { order } => {
                 info!("ORDER SOLVED: {:?}", order);
             }
-            SSMessage::AckSolvedPrevDelegatedOrder { order } => {}
+            SSMessage::AckSolvedPrevDelegatedOrder { order } => {
+                info!("ORDER SOLVED ACK: {:?}", order);
+            }
             SSMessage::GetSSidAndSLid => {
                 self.connection_handler
                     .try_send(GetMySSidAndSLid {

@@ -89,7 +89,7 @@ async fn connect_to_e_commerce(
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             return Ok(());
         } else {
-            error!("[LSComminicator] Unexpected msg: {}", msg.unwrap());
+            error!("[LSComminicator] Unexpected msg: {:?}", msg);
         }
     }
     Ok(())
@@ -122,7 +122,7 @@ async fn connect_to_leader_e_commerce(
 
         let msg = rx_close_connection.recv().await;
         if msg != Some(WAKE_UP.to_string()) {
-            error!("[LSComminicator] Unexpected msg: {}", msg.unwrap());
+            error!("[LSComminicator] Unexpected msg: {:?}", msg);
         }
     }
     Ok(())

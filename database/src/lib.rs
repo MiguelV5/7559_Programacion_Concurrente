@@ -25,7 +25,7 @@ fn init_logger() {
     let _ = tracing::subscriber::set_global_default(subscriber);
 }
 
-pub async fn run() {
+pub async fn run() -> Result<(), String> {
     init_logger();
     info!("Starting database server...");
 
@@ -35,7 +35,9 @@ pub async fn run() {
     let handler_addr =
         db_handler::DBHandlerActor::new(pending_deliveries.clone(), global_stock.clone()).start();
 
-    let listener = TcpListener::bind("127.0.0.1:9999").await.unwrap();
+    let listener = TcpListener::bind("127.0.0.1:9999")
+        .await
+        .map_err(|err| err.to_string())?;
 
     info!("Database server listening on port 9999...");
 
@@ -55,22 +57,5 @@ pub async fn run() {
     }
 
     info!("Database server stopped");
+    Ok(())
 }
-
-/* let listener = TcpListener::bind("127.0.0.1:9900").expect("Failed to bind to address");
-let pending_deliveries = PendingDeliveries::new();
-println!("Server listening on port 9900...");
-
-for stream in listener.incoming() {
-    match stream {
-        Ok(stream) => {
-            let pending_deliveries_clone = pending_deliveries.clone();
-            std::thread::spawn(move || {
-                handle_client(stream, pending_deliveries_clone)
-                    .unwrap_or_else(|error| eprintln!("{:?}", error));
-            });
-        }
-        Err(e) => {
-            eprintln!("Error accepting connection: {}", e);
-        }
-    } */

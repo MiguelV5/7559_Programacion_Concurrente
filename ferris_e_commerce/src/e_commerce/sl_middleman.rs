@@ -66,9 +66,7 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
                 self.id
             );
             self.connection_handler_addr
-                .try_send(RemoveSLMiddleman { id })
-                .map_err(|err| err.to_string())
-                .unwrap();
+                .do_send(RemoveSLMiddleman { id });
         } else {
             warn!("[SLMiddleman] Connection finished from unknown local.")
         }

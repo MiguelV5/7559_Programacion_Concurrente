@@ -4,10 +4,10 @@ use tracing::info;
 
 use crate::e_commerce::connection_handler;
 
-use super::{connection_handler::ConnectionHandler, order_handler::OrderHandler};
+use super::connection_handler::ConnectionHandler;
 
 pub struct OrderWorker {
-    order_handler: Addr<OrderHandler>,
+    // order_handler: Addr<OrderHandler>,
     connection_handler: Addr<ConnectionHandler>,
     id: usize,
 
@@ -29,12 +29,12 @@ impl Actor for OrderWorker {
 impl OrderWorker {
     pub fn new(
         id: usize,
-        order_handler: Addr<OrderHandler>,
+        // order_handler: Addr<OrderHandler>,
         connection_handler: Addr<ConnectionHandler>,
     ) -> Self {
         Self {
             id,
-            order_handler,
+            // order_handler,
             connection_handler,
             curr_order: None,
             remaining_products: Vec::new(),
@@ -53,7 +53,7 @@ pub struct WorkNewOrder {
 impl Handler<WorkNewOrder> for OrderWorker {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: WorkNewOrder, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: WorkNewOrder, _ctx: &mut Context<Self>) -> Self::Result {
         info!(
             "[OrderWorker {:?}] Handling new order: {:?}",
             self.id, msg.order

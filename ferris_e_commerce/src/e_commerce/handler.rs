@@ -94,8 +94,8 @@ async fn start_actors(
 
     let connection_handler = ConnectionHandler::new(order_handler.clone(), ss_id, sl_id).start();
 
-    let order_worker =
-        OrderWorker::new(1, order_handler.clone(), connection_handler.clone()).start();
+    let order_worker = OrderWorker::new(1, connection_handler.clone()).start();
+    // OrderWorker::new(1, order_handler.clone(), connection_handler.clone()).start();
     order_handler
         .send(order_handler::AddOrderWorkerAddr {
             id: 1,

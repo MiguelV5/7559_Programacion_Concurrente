@@ -34,7 +34,7 @@ pub struct ConnectionHandler {
     sl_communicators: HashMap<u16, Addr<SLMiddleman>>,
     ss_communicators: HashMap<u16, Addr<SSMiddleman>>,
 
-    req_send_to_db: Option<DatabaseRequest>,
+    // req_send_to_db: Option<DatabaseRequest>,
     curr_local_id: u16,
 }
 
@@ -55,8 +55,7 @@ impl ConnectionHandler {
             sl_communicators: HashMap::new(),
             ss_communicators: HashMap::new(),
 
-            req_send_to_db: None,
-
+            // req_send_to_db: None,
             curr_local_id: 0,
         }
     }
@@ -87,11 +86,9 @@ impl Handler<AskLeaderMessage> for ConnectionHandler {
         if let Some(leader_id) = self.leader_sl_id {
             msg.sl_middleman_addr
                 .try_send(sl_middleman::SendOnlineMessage {
-                    msg_to_send: SLMessage::LeaderMessage {
-                        leader_id: leader_id,
-                    }
-                    .to_string()
-                    .map_err(|err| err.to_string())?,
+                    msg_to_send: SLMessage::LeaderMessage { leader_id }
+                        .to_string()
+                        .map_err(|err| err.to_string())?,
                 })
                 .map_err(|err| err.to_string())?;
         } else {
@@ -138,8 +135,6 @@ impl Handler<RequestLocalIdDataBase> for ConnectionHandler {
 
     fn handle(&mut self, msg: RequestLocalIdDataBase, ctx: &mut Self::Context) -> Self::Result {
         info!("[ConnectionHandler] Request to DataBase for a new local id.");
-
-        //Not should be like this
         ctx.address()
             .try_send(ResponseLocalIdDataBase {
                 sl_middleman_addr: msg.sl_middleman_addr,
@@ -399,7 +394,7 @@ impl Handler<SendOrderToOrderWorker> for ConnectionHandler {
 
     fn handle(&mut self, msg: SendOrderToOrderWorker, _: &mut Self::Context) -> Self::Result {
         if let Some(order_worker_id) = msg.order.get_worker_id_web() {
-            let order_worker = self
+            let _order_worker = self
                 .order_workers
                 .get(order_worker_id as usize)
                 .ok_or_else(|| "OrderWorker not found.".to_string())?;
@@ -425,7 +420,7 @@ pub struct SendOrderToOtherServer {
 impl Handler<SendOrderToOtherServer> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: SendOrderToOtherServer, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _msg: SendOrderToOtherServer, _: &mut Self::Context) -> Self::Result {
         Ok(())
     }
 }

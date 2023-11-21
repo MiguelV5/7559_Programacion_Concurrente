@@ -43,7 +43,7 @@ impl Handler<SendFirstOrders> for OrderHandler {
     fn handle(&mut self, _msg: SendFirstOrders, _ctx: &mut Self::Context) -> Self::Result {
         info!("PushOrders message received");
         if self.is_leader_ready {
-            for (id, order_worker) in &self.order_workers {
+            for order_worker in self.order_workers.values() {
                 if let Some(order) = self.orders.pop() {
                     order_worker
                         .try_send(order_worker::WorkNewOrder { order })

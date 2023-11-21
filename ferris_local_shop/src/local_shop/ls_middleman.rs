@@ -56,10 +56,7 @@ impl StreamHandler<Result<String, std::io::Error>> for LSMiddleman {
 
     fn finished(&mut self, ctx: &mut Self::Context) {
         info!("[LSMiddleman] Finished.");
-        self.connection_handler_addr
-            .try_send(RemoveLSMiddleman {})
-            .map_err(|err| err.to_string())
-            .unwrap();
+        self.connection_handler_addr.do_send(RemoveLSMiddleman {});
         ctx.stop();
     }
 }

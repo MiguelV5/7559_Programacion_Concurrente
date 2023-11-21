@@ -51,7 +51,9 @@ pub fn start(
 
     input_join_handle
         .join()
-        .map_err(|_| LocalShopError::SystemError("Error joining input handler thread.".to_string()))?
+        .map_err(|_| {
+            LocalShopError::SystemError("Error joining input handler thread.".to_string())
+        })?
         .map_err(|err| LocalShopError::SystemError(err.to_string()))
 }
 
