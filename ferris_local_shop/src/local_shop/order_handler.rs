@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::local_shop::order_worker;
 use actix::prelude::*;
 use shared::model::order::Order;
-use tracing::{error, info, trace, warn};
+use tracing::{error, info, trace};
 
 use super::{
     connection_handler::{self, ConnectionHandlerActor},

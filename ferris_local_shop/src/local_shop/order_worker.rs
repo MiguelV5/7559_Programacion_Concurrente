@@ -99,10 +99,7 @@ impl Handler<WorkNewOrder> for OrderWorkerActor {
             self.id(),
             msg.order
         );
-        self.remaining_products = match &msg.order {
-            Order::Local(order) => order.get_products(),
-            Order::Web(order) => order.get_products(),
-        };
+        self.remaining_products = msg.order.get_products();
         self.curr_order = Some(msg.order.clone());
 
         match self
