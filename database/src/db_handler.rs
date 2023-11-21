@@ -15,6 +15,7 @@ use crate::{
 pub struct DBHandlerActor {
     pub pending_deliveries: PendingDeliveries,
     pub global_stock: GlobalStock,
+    pub last_local_id: u16,
 }
 
 impl Actor for DBHandlerActor {
@@ -26,35 +27,28 @@ impl DBHandlerActor {
         DBHandlerActor {
             pending_deliveries,
             global_stock,
+            last_local_id: 0,
         }
+    }
+
+    pub fn get_new_local_id(&mut self) -> u16 {
+        self.last_local_id += 1;
+        self.last_local_id
     }
 
     pub fn handle_request(&mut self, request: DatabaseRequest) -> DatabaseResponse {
         match request.request_category {
             RequestCategory::PendingDelivery => match request.request_type {
-                RequestType::GetAll => {
-                    let deliveries = self.pending_deliveries.get_all_deliveries();
-                    DatabaseResponse::new(
-                        db_response::ResponseStatus::Ok,
-                        DatabaseMessageBody::ProductsToDelivery(deliveries),
-                    )
-                }
-                RequestType::GetOne => {
-                    if let DatabaseMessageBody::OrderId(order_id) = request.body {
-                        let product = match self.pending_deliveries.get_delivery(order_id) {
-                            Some(product) => DatabaseResponse::new(
-                                ResponseStatus::Ok,
-                                DatabaseMessageBody::ProductsToDelivery(vec![product]),
-                            ),
-                            None => DatabaseResponse::new(
-                                ResponseStatus::Error("Not found product to delivery".to_string()),
-                                DatabaseMessageBody::None,
-                            ),
-                        };
-                        product
+                RequestType::GetOne | RequestType::GetAll => {
+                    if let DatabaseMessageBody::EcommerceId(ecommerce_id) = request.body {
+                        let deliveries = self.pending_deliveries.get_delivery(ecommerce_id);
+                        DatabaseResponse::new(
+                            ResponseStatus::Ok,
+                            DatabaseMessageBody::ProductsToDelivery(deliveries),
+                        )
                     } else {
                         DatabaseResponse::new(
-                            ResponseStatus::Error("Bad request".to_string()),
+                            ResponseStatus::Error("Not found ecommerce_id".to_string()),
                             DatabaseMessageBody::None,
                         )
                     }
@@ -63,19 +57,24 @@ impl DBHandlerActor {
                     if let DatabaseMessageBody::ProductsToDelivery(products_to_delivery) =
                         request.body
                     {
-                        for product_to_delivery in products_to_delivery {
-                            self.pending_deliveries.add_delivery(product_to_delivery);
-                        }
+                        self.pending_deliveries
+                            .add_deliveries(products_to_delivery.clone());
+                        DatabaseResponse::new(
+                            ResponseStatus::Ok,
+                            DatabaseMessageBody::ProductsToDelivery(products_to_delivery),
+                        )
+                    } else {
+                        DatabaseResponse::new(
+                            ResponseStatus::Error("Bad Request".to_string()),
+                            DatabaseMessageBody::None,
+                        )
                     }
-                    DatabaseResponse::new(ResponseStatus::Ok, DatabaseMessageBody::None)
                 }
-                RequestType::Delete => {
-                    if let DatabaseMessageBody::OrderId(order_id) = request.body {
-                        self.pending_deliveries.remove_delivery(order_id);
-                    }
-                    DatabaseResponse::new(ResponseStatus::Ok, DatabaseMessageBody::None)
-                }
-            },
+                RequestType::None => DatabaseResponse::new(
+                    ResponseStatus::Error("Bad Request".to_string()),
+                    DatabaseMessageBody::None,
+                ),
+            }
             RequestCategory::ProductStock => match request.request_type {
                 RequestType::GetAll => {
                     self.global_stock.get_all_local_shops_stock();
@@ -86,6 +85,7 @@ impl DBHandlerActor {
                         ),
                     )
                 }
+            
                 RequestType::GetOne => {
                     //get product quantities from local shops
 
@@ -122,10 +122,24 @@ impl DBHandlerActor {
                         DatabaseMessageBody::None,
                     )
                 }
-                RequestType::Delete => DatabaseResponse::new(
+                RequestType::None => DatabaseResponse::new(
                     ResponseStatus::Error("Bad Request".to_string()),
                     DatabaseMessageBody::None,
                 ),
+            },
+            RequestCategory::NewLocalId => match request.request_type {
+                RequestType::GetOne => {
+                    DatabaseResponse::new(
+                        ResponseStatus::Ok,
+                        DatabaseMessageBody::LocalId(self.get_new_local_id()),
+                    )
+                }
+                RequestType::None | RequestType::Post | RequestType::GetAll => {
+                    DatabaseResponse::new(
+                        ResponseStatus::Error("Bad Request".to_string()),
+                        DatabaseMessageBody::None,
+                    )
+                }
             },
         }
     }

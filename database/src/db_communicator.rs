@@ -41,11 +41,11 @@ impl StreamHandler<Result<String, std::io::Error>> for DBServer {
                 }
                 else {
                     error!("Error in received msg: {}", msg);
-                    ctx.stop();
                 }
             }
             Err(e) => {
                 error!("Error in received msg: {}", e);
+                ctx.stop();
             }
         }
     }
@@ -63,7 +63,9 @@ impl Handler<HandleResponse> for DBServer {
     fn handle(&mut self, msg: HandleResponse, ctx: &mut Self::Context) -> Self::Result {
         let response = msg.response;
         let response_json = match serde_json::to_string(&response) {
-            Ok(response_json) => response_json,
+            Ok(response_json) => {
+                response_json + '\n'.to_string().as_str()
+            }
             Err(e) => {
                 error!("Error serializing response: {:?}", e);
                 e.to_string()
