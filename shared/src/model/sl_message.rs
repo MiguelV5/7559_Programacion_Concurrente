@@ -18,10 +18,11 @@ impl Error for SLMessageError {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum SLMessage {
-    LeaderMessage { leader_ip: String },
-    LocalRegisteredMessage { local_id: usize },
+    LeaderMessage { leader_id: u16 },
+    LocalRegisteredMessage { local_id: u16 },
     LocalLoggedInMessage,
-    WorkNewOrder { e_commerce_id: usize, order: Order },
+    AskAllStock,
+    WorkNewOrder { order: Order },
 }
 
 impl SLMessage {

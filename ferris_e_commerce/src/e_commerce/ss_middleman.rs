@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 
 pub struct SSMiddleman {
     pub connected_server_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
-    pub connected_server_id: u32,
+    pub connected_server_id: u16,
 }
 
 impl Actor for SSMiddleman {

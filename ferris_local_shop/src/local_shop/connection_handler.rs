@@ -1,38 +1,47 @@
+use std::collections::HashMap;
+
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
 use actix_rt::System;
-use shared::model::{ls_message::LSMessage, order::Order};
+use shared::model::{ls_message::LSMessage, order::Order, stock_product::Product};
 use tokio::sync::mpsc::Sender;
 use tracing::{error, info, warn};
 
 use crate::local_shop::{
     constants::{LEADER_ADRR, WAKE_UP},
     ls_middleman::{CloseConnection, SendMessage},
+    stock_handler,
 };
 
 use super::{
     ls_middleman::LSMiddleman,
     order_handler::{self, OrderHandlerActor},
+    stock_handler::StockHandlerActor,
 };
 
 #[derive(Debug)]
 pub struct ConnectionHandlerActor {
     am_alive: bool,
-    local_id: Option<usize>,
+    local_id: Option<u16>,
+    curr_e_commerce_addr: Option<u16>,
 
     order_handler: Addr<OrderHandlerActor>,
+    stock_handler: Addr<StockHandlerActor>,
     ls_middleman: Option<Addr<LSMiddleman>>,
     tx_close_connection: Option<Sender<String>>,
-    curr_e_commerce_addr: Option<String>,
 
     orders_to_send: Vec<(Order, bool)>,
 }
 
 impl ConnectionHandlerActor {
-    pub fn new(order_handler: Addr<OrderHandlerActor>) -> Self {
+    pub fn new(
+        order_handler: Addr<OrderHandlerActor>,
+        stock_handler: Addr<StockHandlerActor>,
+    ) -> Self {
         Self {
             am_alive: true,
             local_id: None,
             order_handler,
+            stock_handler,
             ls_middleman: None,
             tx_close_connection: None,
             curr_e_commerce_addr: None,
@@ -103,11 +112,11 @@ impl Handler<AskAlive> for ConnectionHandlerActor {
 }
 
 #[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<String, String>")]
+#[rtype(result = "Result<u16, String>")]
 pub struct AskEcommerceAddr {}
 
 impl Handler<AskEcommerceAddr> for ConnectionHandlerActor {
-    type Result = Result<String, String>;
+    type Result = Result<u16, String>;
 
     fn handle(&mut self, _: AskEcommerceAddr, _: &mut Context<Self>) -> Self::Result {
         self.curr_e_commerce_addr
@@ -121,7 +130,7 @@ impl Handler<AskEcommerceAddr> for ConnectionHandlerActor {
 pub struct AddLSMiddleman {
     pub ls_middleman: Addr<LSMiddleman>,
     pub tx_close_connection: Sender<String>,
-    pub e_commerce_addr: String,
+    pub e_commerce_addr: u16,
 }
 
 impl Handler<AddLSMiddleman> for ConnectionHandlerActor {
@@ -140,34 +149,13 @@ impl Handler<AddLSMiddleman> for ConnectionHandlerActor {
                     .map_err(|err| err.to_string())?,
             })
             .map_err(|err| err.to_string())
-
-        // if self.local_id.is_none() {
-        //     info!("[ConnectionHandler] Asking for registering local with e-commerce.");
-        //     msg.ls_middleman
-        //         .try_send(SendMessage {
-        //             msg_to_send: LSMessage::RegisterLocalMessage
-        //                 .to_string()
-        //                 .map_err(|err| err.to_string())?,
-        //         })
-        //         .map_err(|err| err.to_string())?;
-        //     return Ok(());
-        // }
-
-        // if let Some((order, was_finished)) = self.orders_to_send.pop() {
-        //     ctx.address()
-        //         .try_send(TrySendFinishedOrder {
-        //             order,
-        //             was_finished,
-        //         })
-        //         .map_err(|err| err.to_string())?;
-        // }
     }
 }
 
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(), String>")]
 pub struct LeaderMessage {
-    pub leader_ip: String,
+    pub leader_ip: u16,
 }
 
 impl Handler<LeaderMessage> for ConnectionHandlerActor {
@@ -176,8 +164,8 @@ impl Handler<LeaderMessage> for ConnectionHandlerActor {
     fn handle(&mut self, msg: LeaderMessage, _: &mut Context<Self>) -> Self::Result {
         info!("[ConnectionHandler] Checking e-commerce leader address.");
 
-        if let Some(curr_e_commerce_addr) = &self.curr_e_commerce_addr {
-            if curr_e_commerce_addr == &msg.leader_ip {
+        if let Some(curr_e_commerce_id) = &self.curr_e_commerce_addr {
+            if curr_e_commerce_id == &msg.leader_ip {
                 match self.local_id {
                     Some(local_id) => {
                         info!("[ConnectionHandler] Asking for logging in local with e-commerce.");
@@ -190,6 +178,7 @@ impl Handler<LeaderMessage> for ConnectionHandlerActor {
                                     .map_err(|err| err.to_string())?,
                             })
                             .map_err(|err| err.to_string())?;
+                        return Ok(());
                     }
                     None => {
                         info!("[ConnectionHandler] Asking for registering local with e-commerce.");
@@ -202,6 +191,7 @@ impl Handler<LeaderMessage> for ConnectionHandlerActor {
                                     .map_err(|err| err.to_string())?,
                             })
                             .map_err(|err| err.to_string())?;
+                        return Ok(());
                     }
                 }
             }
@@ -218,7 +208,7 @@ impl Handler<LeaderMessage> for ConnectionHandlerActor {
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(), String>")]
 pub struct LocalRegistered {
-    pub local_id: usize,
+    pub local_id: u16,
 }
 
 impl Handler<LocalRegistered> for ConnectionHandlerActor {
@@ -300,8 +290,51 @@ impl Handler<WakeUpConnection> for ConnectionHandlerActor {
 
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(), String>")]
+pub struct AskAllStockMessage {}
+
+impl Handler<AskAllStockMessage> for ConnectionHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: AskAllStockMessage, ctx: &mut Context<Self>) -> Self::Result {
+        info!("[ConnectionHandler] Asking for all stock.");
+        self.stock_handler
+            .try_send(stock_handler::AskAllStock {
+                connection_handler_addr: ctx.address(),
+            })
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug)]
+#[rtype(result = "Result<(), String>")]
+pub struct ResponseAllStockMessage {
+    pub stock: HashMap<String, Product>,
+}
+
+impl Handler<ResponseAllStockMessage> for ConnectionHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: ResponseAllStockMessage, _: &mut Context<Self>) -> Self::Result {
+        info!("[ConnectionHandler] All stock received.");
+        if let Some(ls_middleman) = &self.ls_middleman {
+            ls_middleman
+                .try_send(SendMessage {
+                    msg_to_send: LSMessage::Stock { stock: msg.stock }
+                        .to_string()
+                        .map_err(|err| err.to_string())?,
+                })
+                .map_err(|err| err.to_string())?;
+            return Ok(());
+        } else {
+            warn!("[ConnectionHandler] Cannot send stock, no LsMiddleman found.");
+        }
+        Ok(())
+    }
+}
+
+#[derive(Message, Debug)]
+#[rtype(result = "Result<(), String>")]
 pub struct WorkNewOrder {
-    pub e_commerce_id: usize,
     pub order: Order,
 }
 
@@ -309,10 +342,7 @@ impl Handler<WorkNewOrder> for ConnectionHandlerActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: WorkNewOrder, _: &mut Context<Self>) -> Self::Result {
-        info!(
-            "[ConnectionHandler] New order received from e-commerce {}.",
-            msg.e_commerce_id
-        );
+        info!("[ConnectionHandler] New order received from e-commerce");
 
         self.order_handler
             .try_send(order_handler::AddNewWebOrder { order: msg.order })
@@ -328,6 +358,10 @@ impl Handler<TrySendOneOrder> for ConnectionHandlerActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: TrySendOneOrder, ctx: &mut Context<Self>) -> Self::Result {
+        if self.local_id.is_none() || self.ls_middleman.is_none() {
+            return Ok(());
+        }
+
         if let Some((order, was_finished)) = self.orders_to_send.pop() {
             ctx.address()
                 .try_send(TrySendFinishedOrder {
@@ -364,18 +398,21 @@ impl Handler<TrySendFinishedOrder> for ConnectionHandlerActor {
                 .map_err(|err| err.to_string());
         }
 
-        match msg.order {
+        let mut order = msg.order;
+        order.set_local_id(self.local_id.ok_or("Local id not set.".to_string())?);
+
+        match order {
             Order::Local(_) => ctx
                 .address()
                 .try_send(TrySendFinishedLocalOrder {
-                    order: msg.order,
+                    order,
                     was_finished: msg.was_finished,
                 })
                 .map_err(|err| err.to_string()),
             Order::Web(_) => ctx
                 .address()
                 .try_send(TrySendFinishedWebOrder {
-                    order: msg.order,
+                    order,
                     was_finished: msg.was_finished,
                 })
                 .map_err(|err| err.to_string()),
@@ -422,13 +459,7 @@ impl Handler<TrySendFinishedLocalOrder> for ConnectionHandlerActor {
 
         if let Order::Local(_) = &msg.order {
             if msg.was_finished {
-                message = LSMessage::OrderFinished {
-                    e_commerce_id: None,
-                    local_id: self
-                        .local_id
-                        .ok_or("Should not happen, the local id must be set.".to_string())?,
-                    order: msg.order,
-                }
+                message = LSMessage::OrderCompleted { order: msg.order }
             } else {
                 return Ok(());
             }
@@ -467,26 +498,11 @@ impl Handler<TrySendFinishedWebOrder> for ConnectionHandlerActor {
             .clone()
             .ok_or("Should not happen, the LSMiddleman must be set".to_string())?;
         let message;
-
-        if let Order::Web(order) = &msg.order {
+        if let Order::Web(_) = &msg.order {
             if msg.was_finished {
-                message = LSMessage::OrderFinished {
-                    e_commerce_id: order.e_commerce_id,
-                    local_id: self
-                        .local_id
-                        .ok_or("Should not happen, the local id must be set.".to_string())?,
-                    order: msg.order,
-                }
+                message = LSMessage::OrderCompleted { order: msg.order }
             } else {
-                message = LSMessage::OrderCancelled {
-                    e_commerce_id: order
-                        .e_commerce_id
-                        .ok_or("Should not happen, the e-commerce id must be set.".to_string())?,
-                    local_id: self
-                        .local_id
-                        .ok_or("Should not happen, the local id must be set.".to_string())?,
-                    order: msg.order,
-                }
+                message = LSMessage::OrderCancelled { order: msg.order }
             }
         } else {
             return Err("Should not happen, the order must be a web order.".to_string());

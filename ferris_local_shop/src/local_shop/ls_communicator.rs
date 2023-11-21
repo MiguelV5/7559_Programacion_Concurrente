@@ -27,13 +27,12 @@ pub fn handle_connection_with_e_commerce(
     actix::spawn(async move {
         loop {
             for curr_port in SL_INITIAL_PORT..SL_MAX_PORT + 1 {
-                let addr = format!("{}:{}", LOCALHOST, curr_port);
                 if let Err(err) =
-                    connect_to_e_commerce(addr.clone(), connection_handler_addr.clone()).await
+                    connect_to_e_commerce(curr_port, connection_handler_addr.clone()).await
                 {
                     trace!(
                         "[LSComminicator] Error connecting to server at {}: {}",
-                        addr,
+                        format!("{}:{}", LOCALHOST, curr_port),
                         err
                     );
                 }
@@ -53,9 +52,10 @@ pub fn handle_connection_with_e_commerce(
 }
 
 async fn connect_to_e_commerce(
-    addr: String,
+    port: u16,
     connection_handler_addr: Addr<ConnectionHandlerActor>,
 ) -> Result<(), String> {
+    let addr = format!("{}:{}", LOCALHOST, port);
     if let Ok(stream) = AsyncTcpStream::connect(addr.clone()).await {
         let (tx_close_connection, mut rx_close_connection) = tokio::sync::mpsc::channel(1);
         info!("[LSComminicator] Connected to server at {}.", addr);
@@ -72,7 +72,7 @@ async fn connect_to_e_commerce(
             .try_send(connection_handler::AddLSMiddleman {
                 ls_middleman: ls_middleman.clone(),
                 tx_close_connection,
-                e_commerce_addr: addr.clone(),
+                e_commerce_addr: port,
             })
             .map_err(|err| err.to_string())?;
 
@@ -93,9 +93,10 @@ async fn connect_to_e_commerce(
 }
 
 async fn connect_to_leader_e_commerce(
-    addr: String,
+    port: u16,
     connection_handler_addr: Addr<ConnectionHandlerActor>,
 ) -> Result<(), String> {
+    let addr = format!("{}:{}", LOCALHOST, port);
     if let Ok(stream) = AsyncTcpStream::connect(addr.clone()).await {
         let (tx_close_connection, mut rx_close_connection) = tokio::sync::mpsc::channel(1);
         info!("[LSComminicator] Connected to server at {}.", addr);
@@ -112,7 +113,7 @@ async fn connect_to_leader_e_commerce(
             .try_send(connection_handler::AddLSMiddleman {
                 ls_middleman: ls_middleman.clone(),
                 tx_close_connection,
-                e_commerce_addr: addr.clone(),
+                e_commerce_addr: port,
             })
             .map_err(|err| err.to_string())?;
 

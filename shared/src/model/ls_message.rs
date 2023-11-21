@@ -1,8 +1,8 @@
-use std::{error::Error, fmt};
+use std::{collections::HashMap, error::Error, fmt};
 
 use serde::{Deserialize, Serialize};
 
-use super::order::Order;
+use super::{order::Order, stock_product::Product};
 
 #[derive(Debug)]
 pub enum LSMessageError {
@@ -20,19 +20,10 @@ impl Error for LSMessageError {}
 pub enum LSMessage {
     AskLeaderMessage,
     RegisterLocalMessage,
-    LoginLocalMessage {
-        local_id: usize,
-    },
-    OrderFinished {
-        e_commerce_id: Option<usize>,
-        local_id: usize,
-        order: Order,
-    },
-    OrderCancelled {
-        e_commerce_id: usize,
-        local_id: usize,
-        order: Order,
-    },
+    LoginLocalMessage { local_id: u16 },
+    Stock { stock: HashMap<String, Product> },
+    OrderCompleted { order: Order },
+    OrderCancelled { order: Order },
 }
 
 impl LSMessage {
