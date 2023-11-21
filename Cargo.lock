@@ -151,9 +151,16 @@ dependencies = [
 name = "database"
 version = "0.1.0"
 dependencies = [
+ "actix",
+ "actix-rt",
+ "futures-channel",
  "serde",
  "serde_json",
  "shared",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -508,6 +515,8 @@ dependencies = [
 name = "shared"
 version = "0.1.0"
 dependencies = [
+ "actix",
+ "actix-rt",
  "serde",
  "serde_json",
  "tokio",

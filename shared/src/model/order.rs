@@ -12,6 +12,7 @@ pub enum Order {
 pub struct WebOrder {
     pub e_commerce_id: Option<usize>,
     products: Vec<Product>,
+    pub local_id: Option<usize>,
 }
 
 impl WebOrder {
@@ -19,6 +20,7 @@ impl WebOrder {
         Self {
             e_commerce_id: None,
             products,
+            local_id: None,
         }
     }
 
@@ -32,6 +34,15 @@ impl WebOrder {
 
     pub fn is_local(&self) -> bool {
         false
+    }
+}
+
+impl Order {
+    pub fn get_products(&self) -> Vec<Product> {
+        match self {
+            Order::Local(local_order) => local_order.get_products(),
+            Order::Web(web_order) => web_order.get_products(),
+        }
     }
 }
 
