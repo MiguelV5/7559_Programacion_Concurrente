@@ -20,6 +20,7 @@ use tokio::sync::Mutex;
 use tokio_stream::wrappers::LinesStream;
 
 use crate::e_commerce::connection_handler::AddSSMiddlemanAddr;
+use crate::e_commerce::connection_handler::LeaderElection;
 use crate::e_commerce::ss_middleman::SSMiddleman;
 
 use super::connection_handler::ConnectionHandler;
@@ -35,6 +36,7 @@ pub fn setup_servers_connections(
     actix::spawn(async move {
         if let Err(e) = try_connect_to_servers(connection_handler.clone()).await {
             warn!("{}", e);
+            connection_handler.do_send(LeaderElection {});
         }
         if let Err(e) =
             handle_incoming_servers(connection_handler, servers_listening_port, rx_from_input).await
@@ -113,11 +115,10 @@ async fn handle_communication_loop(
     connection_handler: Addr<ConnectionHandler>,
 ) -> Result<(), String> {
     loop {
-        if is_exit_required(&rx_from_input) {
-            return Ok(());
-        }
-
         if let Ok((stream, stream_addr)) = listener.accept().await {
+            if is_exit_required(&rx_from_input) {
+                return Ok(());
+            }
             info!(" [{:?}] Server connected", stream_addr);
             handle_server_connected_to_me(stream, &connection_handler);
         };

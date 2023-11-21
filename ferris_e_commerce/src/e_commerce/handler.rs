@@ -89,11 +89,14 @@ async fn start_actors(
 ) -> Result<(Addr<OrderHandler>, Addr<ConnectionHandler>), Box<dyn Error>> {
     let order_handler = OrderHandler::new(&orders).start();
 
-    let connection_handler = ConnectionHandler::new(servers_listening_port).start();
+    let connection_handler =
+        ConnectionHandler::new(servers_listening_port, order_handler.clone()).start();
 
-    let order_worker = OrderWorker::new(order_handler.clone(), connection_handler.clone()).start();
+    let order_worker =
+        OrderWorker::new(1, order_handler.clone(), connection_handler.clone()).start();
     order_handler
         .send(order_handler::AddOrderWorkerAddr {
+            id: 1,
             order_worker_addr: order_worker.clone(),
         })
         .await?;

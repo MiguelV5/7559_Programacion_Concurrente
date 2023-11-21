@@ -2,7 +2,7 @@ use std::{error::Error, fmt};
 
 use serde::{Deserialize, Serialize};
 
-use super::order::WebOrder;
+use super::order::Order;
 
 #[derive(Debug)]
 pub enum SSMessageError {
@@ -19,14 +19,13 @@ impl Error for SSMessageError {}
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum SSMessage {
     // General messages
-    ElectLeader { requestor_ip: String },
-    AckElectLeader { responder_ip: String },
-    SelectedLeader { leader_ip: String },
-    AckSelectedLeader { responder_ip: String },
-    DelegateOrderToLeader { web_order: WebOrder },
-    AckDelegateOrderToLeader { web_order: WebOrder },
-    SolvedPrevDelegatedOrder { web_order: WebOrder },
-    AckSolvedPrevDelegatedOrder { web_order: WebOrder },
+    ElectLeader { requestor_id: u16 },
+    AckElectLeader,
+    SelectedLeader { leader_id: u16 },
+    DelegateOrderToLeader { order: Order },
+    AckDelegateOrderToLeader { order: Order },
+    SolvedPrevDelegatedOrder { order: Order },
+    AckSolvedPrevDelegatedOrder { order: Order },
     // Handshake messages
     GetServerId,
     AckGetServerId { server_id: u16 },

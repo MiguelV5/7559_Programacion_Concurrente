@@ -3,7 +3,8 @@ use std::sync::Arc;
 use actix::{
     dev::ContextFutureSpawner, fut::wrap_future, Actor, Context, Handler, Message, StreamHandler,
 };
-use actix::{Addr, AsyncContext};
+use actix::{ActorContext, Addr, AsyncContext};
+use shared::model::order::{Order, WebOrder};
 use shared::model::ss_message::SSMessage;
 use tracing::{error, info};
 
@@ -13,10 +14,10 @@ use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::Mutex;
 
 use crate::e_commerce::connection_handler::{
-    AddSSMiddlemanAddr, GetMyServerId, StartLeaderElection,
+    AddSSMiddlemanAddr, CheckIfTheOneWhoClosedWasLeader, GetMyServerId, LeaderElection,
 };
 
-use super::connection_handler::ConnectionHandler;
+use super::connection_handler::{ConnectionHandler, LeaderSelected};
 
 pub struct SSMiddleman {
     pub connection_handler: Addr<ConnectionHandler>,
@@ -43,6 +44,17 @@ impl StreamHandler<Result<String, std::io::Error>> for SSMiddleman {
             error!("[ONLINE RECEIVER] Error in received msg: {}", err);
         }
     }
+
+    fn finished(&mut self, ctx: &mut Self::Context) {
+        info!("[ONLINE RECEIVER] Connection closed");
+        if let Some(server_id) = self.connected_server_id {
+            self.connection_handler
+                .do_send(CheckIfTheOneWhoClosedWasLeader {
+                    closed_server_id: server_id,
+                });
+        }
+        ctx.stop();
+    }
 }
 
 #[derive(Message, Debug, PartialEq, Eq)]
@@ -56,16 +68,29 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
 
     fn handle(&mut self, msg: HandleOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
         match SSMessage::from_string(&msg.received_msg).map_err(|err| err.to_string())? {
-            SSMessage::ElectLeader { requestor_ip } => {}
-            SSMessage::AckElectLeader { responder_ip } => {}
-            SSMessage::SelectedLeader { leader_ip } => {}
-            SSMessage::AckSelectedLeader { responder_ip } => {}
-            SSMessage::DelegateOrderToLeader { web_order } => {}
-            SSMessage::AckDelegateOrderToLeader { web_order } => {}
-            SSMessage::SolvedPrevDelegatedOrder { web_order } => {
-                info!("ORDER SOLVED: {:?}", web_order);
+            SSMessage::ElectLeader { requestor_id } => {
+                let ack = SSMessage::AckElectLeader
+                    .to_string()
+                    .map_err(|err| err.to_string())?;
+                ctx.address()
+                    .try_send(SendOnlineMsg { msg_to_send: ack })
+                    .map_err(|err| err.to_string())?;
+                self.connection_handler
+                    .try_send(LeaderElection {})
+                    .map_err(|err| err.to_string())?;
             }
-            SSMessage::AckSolvedPrevDelegatedOrder { web_order } => {}
+            SSMessage::AckElectLeader => {}
+            SSMessage::SelectedLeader { leader_id } => {
+                self.connection_handler
+                    .try_send(LeaderSelected { leader_id })
+                    .map_err(|err| err.to_string())?;
+            }
+            SSMessage::DelegateOrderToLeader { order } => {}
+            SSMessage::AckDelegateOrderToLeader { order } => {}
+            SSMessage::SolvedPrevDelegatedOrder { order } => {
+                info!("ORDER SOLVED: {:?}", order);
+            }
+            SSMessage::AckSolvedPrevDelegatedOrder { order } => {}
             SSMessage::GetServerId => {
                 self.connection_handler
                     .try_send(GetMyServerId {
@@ -82,7 +107,7 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
                     })
                     .map_err(|err| err.to_string())?;
                 self.connection_handler
-                    .try_send(StartLeaderElection {})
+                    .try_send(LeaderElection {})
                     .map_err(|err| err.to_string())?;
             }
         };
@@ -158,6 +183,76 @@ impl Handler<GotMyServerId> for SSMiddleman {
         }
         .to_string()
         .map_err(|err| err.to_string())?;
+        ctx.address()
+            .try_send(SendOnlineMsg {
+                msg_to_send: online_msg,
+            })
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<(),String>")]
+pub struct SendElectLeader {
+    pub my_id: u16,
+}
+
+impl Handler<SendElectLeader> for SSMiddleman {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: SendElectLeader, ctx: &mut Self::Context) -> Self::Result {
+        let online_msg = SSMessage::ElectLeader {
+            requestor_id: msg.my_id,
+        }
+        .to_string()
+        .map_err(|err| err.to_string())?;
+        ctx.address()
+            .try_send(SendOnlineMsg {
+                msg_to_send: online_msg,
+            })
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<(),String>")]
+pub struct SendSelectedLeader {
+    pub my_id: u16,
+}
+
+impl Handler<SendSelectedLeader> for SSMiddleman {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: SendSelectedLeader, ctx: &mut Self::Context) -> Self::Result {
+        let online_msg = SSMessage::SelectedLeader {
+            leader_id: msg.my_id,
+        }
+        .to_string()
+        .map_err(|err| err.to_string())?;
+        ctx.address()
+            .try_send(SendOnlineMsg {
+                msg_to_send: online_msg,
+            })
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<(),String>")]
+pub struct SendDelegateOrderToLeader {
+    pub order: Order,
+}
+
+impl Handler<SendDelegateOrderToLeader> for SSMiddleman {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: SendDelegateOrderToLeader, ctx: &mut Self::Context) -> Self::Result {
+        let online_msg = SSMessage::DelegateOrderToLeader { order: msg.order }
+            .to_string()
+            .map_err(|err| err.to_string())?;
         ctx.address()
             .try_send(SendOnlineMsg {
                 msg_to_send: online_msg,

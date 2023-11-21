@@ -62,11 +62,10 @@ async fn handle_communication_loop(
 ) -> Result<(), String> {
     let mut local_shop_id = 0;
     loop {
-        if is_exit_required(&rx_from_input) {
-            return Ok(());
-        }
-
         if let Ok((stream, stream_addr)) = listener.accept().await {
+            if is_exit_required(&rx_from_input) {
+                return Ok(());
+            }
             info!(" [{:?}] Client connected", stream_addr);
             handle_connected_local_shop(stream, &connection_handler, local_shop_id);
             local_shop_id += 1;

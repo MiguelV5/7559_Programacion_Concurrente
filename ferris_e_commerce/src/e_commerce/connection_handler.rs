@@ -1,16 +1,26 @@
 use std::collections::HashMap;
 
-use actix::{Actor, Addr, Context, Handler, Message};
-use tracing::warn;
+use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
+use shared::model::order::Order;
+use tracing::{info, warn};
 
-use super::{order_worker::OrderWorker, sl_middleman::SLMiddleman, ss_middleman::SSMiddleman};
+use crate::e_commerce::ss_middleman;
+
+use super::{
+    order_handler::{self, OrderHandler},
+    order_worker::OrderWorker,
+    sl_middleman::SLMiddleman,
+    ss_middleman::SSMiddleman,
+};
 
 pub struct ConnectionHandler {
+    order_handler: Addr<OrderHandler>,
     order_workers: Vec<Addr<OrderWorker>>,
     sl_communicators: HashMap<u32, Addr<SLMiddleman>>,
     ss_communicators: HashMap<u16, Addr<SSMiddleman>>,
     leader_id: Option<u16>,
     my_id: u16,
+    leader_election_running: bool,
 }
 
 impl Actor for ConnectionHandler {
@@ -22,13 +32,15 @@ impl Actor for ConnectionHandler {
 }
 
 impl ConnectionHandler {
-    pub fn new(servers_listener_port: u16) -> Self {
+    pub fn new(servers_listener_port: u16, order_handler: Addr<OrderHandler>) -> Self {
         Self {
             leader_id: None,
             my_id: servers_listener_port,
+            order_handler,
             order_workers: Vec::new(),
             sl_communicators: HashMap::new(),
             ss_communicators: HashMap::new(),
+            leader_election_running: false,
         }
     }
 }
@@ -101,13 +113,125 @@ impl Handler<AddOrderWorkerAddr> for ConnectionHandler {
 // ==========================================================================
 
 #[derive(Message)]
-#[rtype(result = "()")]
-pub struct StartLeaderElection {}
+#[rtype(result = "Result<(),String>")]
+pub struct LeaderElection {}
 
-impl Handler<StartLeaderElection> for ConnectionHandler {
-    type Result = ();
+impl Handler<LeaderElection> for ConnectionHandler {
+    type Result = Result<(), String>;
 
-    fn handle(&mut self, _msg: StartLeaderElection, _ctx: &mut Self::Context) -> Self::Result {
-        warn!("StartLeaderElection message received");
+    fn handle(&mut self, _msg: LeaderElection, _ctx: &mut Self::Context) -> Self::Result {
+        warn!("LeaderElection message received");
+        if !self.leader_election_running {
+            self.leader_election_running = true;
+            let mut my_id_is_greater = true;
+            for (server_id, ss_middleman) in self.ss_communicators.iter() {
+                if server_id > &self.my_id {
+                    info!("Found a server with a greater id: {}", server_id);
+                    my_id_is_greater = false;
+                    ss_middleman
+                        .try_send(ss_middleman::SendElectLeader { my_id: self.my_id })
+                        .map_err(|err| err.to_string())?;
+                }
+            }
+            if my_id_is_greater {
+                info!("I'm the new leader, notifying all servers");
+                for (server_id, ss_middleman) in self.ss_communicators.iter() {
+                    ss_middleman
+                        .try_send(ss_middleman::SendSelectedLeader { my_id: self.my_id })
+                        .map_err(|err| err.to_string())?;
+                }
+                self.leader_id = Some(self.my_id);
+                self.leader_election_running = false;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<(),String>")]
+pub struct LeaderSelected {
+    pub leader_id: u16,
+}
+
+impl Handler<LeaderSelected> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: LeaderSelected, _ctx: &mut Self::Context) -> Self::Result {
+        self.leader_id = Some(msg.leader_id);
+        self.leader_election_running = false;
+        self.order_handler
+            .try_send(order_handler::LeaderIsReady {})
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<(),String>")]
+pub struct DelegateOrderToLeader {
+    pub order: Order,
+}
+
+impl Handler<DelegateOrderToLeader> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: DelegateOrderToLeader, _ctx: &mut Self::Context) -> Self::Result {
+        info!("DelegateOrderToLeader message received");
+        if let Some(leader_id) = self.leader_id {
+            if let Some(ss_middleman) = self.ss_communicators.get(&leader_id) {
+                ss_middleman
+                    .try_send(ss_middleman::SendDelegateOrderToLeader {
+                        order: msg.order.clone(),
+                    })
+                    .map_err(|err| err.to_string())?;
+                self.order_handler
+                    .try_send(order_handler::SendFirstOrders {})
+                    .map_err(|err| err.to_string())?;
+                Ok(())
+            } else {
+                Err(format!(
+                    "No SS middleman found for leader with id {}",
+                    leader_id
+                ))
+            }
+        } else {
+            Err("No leader selected yet".to_string())
+        }
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<(),String>")]
+pub struct CheckIfTheOneWhoClosedWasLeader {
+    pub closed_server_id: u16,
+}
+
+impl Handler<CheckIfTheOneWhoClosedWasLeader> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(
+        &mut self,
+        msg: CheckIfTheOneWhoClosedWasLeader,
+        ctx: &mut Self::Context,
+    ) -> Self::Result {
+        if let Some(leader_id) = self.leader_id {
+            if leader_id == msg.closed_server_id {
+                self.leader_id = None;
+                self.order_handler
+                    .try_send(order_handler::LeaderIsNotReady {})
+                    .map_err(|err| err.to_string())?;
+                ctx.address()
+                    .try_send(LeaderElection {})
+                    .map_err(|err| err.to_string())?;
+            }
+            self.ss_communicators
+                .remove(&msg.closed_server_id)
+                .ok_or(format!(
+                    "No SS middleman found for server with id {}",
+                    msg.closed_server_id
+                ))?;
+        }
+        Ok(())
     }
 }
