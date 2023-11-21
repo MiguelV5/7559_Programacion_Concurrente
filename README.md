@@ -80,11 +80,12 @@ cargo test
 
 #### General
 
-...
-
-<!-- imagen de la arquitectura -->
 <p align="center">
     <img alt="arquitectura" src="./assets/imgs/arquitectura.png" width="100%"/>
+</p>
+<br>
+<p align="center">
+    <img alt="arquitectura" src="./assets/imgs/zoom_arquitectura.png" width="100%"/>
 </p>
 
 #### E-commerce
@@ -96,7 +97,6 @@ En particular se implementan los siguientes actores:
 - `SSMiddleman`: se encarga de manejar el estado de conexión con los demas nodos de e-commerce, incluyendo manejo de algoritmo de eleccion de lider y reenvio de resultados de procesamiento de ordenes al nodo que la solicito.
 - `OrderHandler`: se encarga de reenviar mensajes relacionados a las ordenes solicitadas y a resultados de las mismas al actor correspondiente, segun sea para delegar la orden a un local (pasando por el `SLMiddleman`) o para reenviar un resultado de procesamiento hacia el `SSMiddleman`.
 
-...
 
 <p align="center">
     <img alt="e_commerce" src="./assets/imgs/e_commerce.png" width="100%"/>
@@ -112,10 +112,8 @@ Se implementan los siguientes actores:
 - `OrderHandler`: se encarga de reenviar mensajes relacionados a todas las ordenes solicitadas al actor correspondiente, segun sea para delegar el procesamiento de una orden o para reenviar un resultado de procesamiento hacia el `SLMiddleman`.
 - `SLMiddleman`: se encarga de manejar el estado de conexión con el e-commerce, de reenviarle al `OrderHandler` las peticiones obtenidas de dicha conexión, y de reenviar los resultados de procesamiento de ordenes al mismo.
 
-...
 
 <p align="center">
     <img alt="local_shop" src="./assets/imgs/local_shop.png" width="100%"/>
 </p>
 
-...
