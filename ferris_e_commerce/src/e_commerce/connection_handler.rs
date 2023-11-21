@@ -203,7 +203,8 @@ fn new_local_id_from_db() -> Result<u16, String> {
     stream.write_all(b"\n").map_err(|err| err.to_string())?;
     let mut line: String = String::new();
     reader.read_line(&mut line).map_err(|err| err.to_string())?;
-    let response = serde_json::from_str::<DatabaseResponse>(&line).map_err(|err| err.to_string())?;
+    let response =
+        serde_json::from_str::<DatabaseResponse>(&line).map_err(|err| err.to_string())?;
     if let DatabaseMessageBody::LocalId(id) = response.body {
         Ok(id)
     } else {
