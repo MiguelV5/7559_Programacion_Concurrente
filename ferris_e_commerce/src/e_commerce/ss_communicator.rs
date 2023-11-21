@@ -31,10 +31,13 @@ use super::ss_middleman::GoAskForConnectedServerId;
 pub fn setup_servers_connections(
     connection_handler: Addr<ConnectionHandler>,
     servers_listening_port: u16,
+    locals_listening_port: u16,
     rx_from_input: mpsc::Receiver<String>,
 ) -> JoinHandle<()> {
     actix::spawn(async move {
-        if let Err(e) = try_connect_to_servers(connection_handler.clone()).await {
+        if let Err(e) =
+            try_connect_to_servers(connection_handler.clone(), locals_listening_port).await
+        {
             warn!("{}", e);
             connection_handler.do_send(LeaderElection {});
         }
@@ -46,7 +49,10 @@ pub fn setup_servers_connections(
     })
 }
 
-async fn try_connect_to_servers(connection_handler: Addr<ConnectionHandler>) -> Result<(), String> {
+async fn try_connect_to_servers(
+    connection_handler: Addr<ConnectionHandler>,
+    locals_listening_port: u16,
+) -> Result<(), String> {
     let mut current_port = SS_INITIAL_PORT;
     let mut could_connect_any = false;
     while current_port <= SS_MAX_PORT {
@@ -61,7 +67,8 @@ async fn try_connect_to_servers(connection_handler: Addr<ConnectionHandler>) -> 
                 SSMiddleman {
                     connection_handler: connection_handler.clone(),
                     connected_server_write_stream: Arc::new(Mutex::new(writer)),
-                    connected_server_id: Some(current_port),
+                    connected_server_ss_id: Some(current_port),
+                    connected_server_sl_id: Some(locals_listening_port),
                 }
             });
             match connection_handler.try_send(AddSSMiddlemanAddr {
@@ -135,7 +142,8 @@ fn handle_server_connected_to_me(
         SSMiddleman {
             connection_handler: connection_handler.clone(),
             connected_server_write_stream: Arc::new(Mutex::new(writer)),
-            connected_server_id: None,
+            connected_server_ss_id: None,
+            connected_server_sl_id: None,
         }
     });
     match ss_middleman.try_send(GoAskForConnectedServerId {}) {

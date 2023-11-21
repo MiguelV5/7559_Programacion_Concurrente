@@ -19,16 +19,32 @@ impl Error for SSMessageError {}
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum SSMessage {
     // General messages
-    ElectLeader { requestor_id: u16 },
+    ElectLeader {
+        requestor_id: u16,
+    },
     AckElectLeader,
-    SelectedLeader { leader_id: u16 },
-    DelegateOrderToLeader { order: Order },
-    AckDelegateOrderToLeader { order: Order },
-    SolvedPrevDelegatedOrder { order: Order },
-    AckSolvedPrevDelegatedOrder { order: Order },
+    SelectedLeader {
+        leader_ss_id: u16,
+        leader_sl_id: u16,
+    },
+    DelegateOrderToLeader {
+        order: Order,
+    },
+    AckDelegateOrderToLeader {
+        order: Order,
+    },
+    SolvedPrevDelegatedOrder {
+        order: Order,
+    },
+    AckSolvedPrevDelegatedOrder {
+        order: Order,
+    },
     // Handshake messages
-    GetServerId,
-    AckGetServerId { server_id: u16 },
+    GetSSidAndSLid,
+    AckGetSSidAndSLid {
+        ss_id: u16,
+        sl_id: u16,
+    },
 }
 
 impl SSMessage {

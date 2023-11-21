@@ -1,6 +1,10 @@
 use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Write};
+use std::net::TcpStream;
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
+use shared::model::db_message_body::DatabaseMessageBody;
+use shared::model::db_request::{RequestCategory, RequestType};
 use shared::model::order::Order;
 use shared::model::{db_request::DatabaseRequest, sl_message::SLMessage, stock_product::Product};
 use tracing::{error, info, warn};
@@ -154,27 +158,24 @@ impl Handler<ResponseLocalIdDataBase> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: ResponseLocalIdDataBase, _: &mut Self::Context) -> Self::Result {
-        //Not should be like this
-        self.curr_local_id += 1;
+        let db_response_id = new_local_id_from_db()?;
         info!(
             "[ConnectionHandler] Response local id from DataBase: {}.",
-            self.curr_local_id
+            db_response_id
         );
         self.sl_communicators
-            .insert(self.curr_local_id, msg.sl_middleman_addr.clone());
+            .insert(db_response_id, msg.sl_middleman_addr.clone());
         msg.sl_middleman_addr
             .try_send(sl_middleman::SendOnlineMessage {
                 msg_to_send: SLMessage::LocalRegisteredMessage {
-                    local_id: self.curr_local_id,
+                    local_id: db_response_id,
                 }
                 .to_string()
                 .map_err(|err| err.to_string())?,
             })
             .map_err(|err| err.to_string())?;
         msg.sl_middleman_addr
-            .try_send(SetUpId {
-                id: self.curr_local_id,
-            })
+            .try_send(SetUpId { id: db_response_id })
             .map_err(|err| err.to_string())?;
         msg.sl_middleman_addr
             .try_send(sl_middleman::SendOnlineMessage {
@@ -183,6 +184,34 @@ impl Handler<ResponseLocalIdDataBase> for ConnectionHandler {
                     .map_err(|err| err.to_string())?,
             })
             .map_err(|err| err.to_string())
+    }
+}
+
+fn new_local_id_from_db() -> Result<u16, String> {
+    let request = DatabaseRequest::new(
+        RequestCategory::NewLocalId,
+        RequestType::GetOne,
+        DatabaseMessageBody::None,
+    );
+
+    let mut stream = TcpStream::connect("127.0.0.1:9999").map_err(|err| err.to_string())?;
+    let mut reader = BufReader::new(stream.try_clone().map_err(|err| err.to_string())?);
+
+    stream
+        .write_all(
+            serde_json::to_string(&request)
+                .map_err(|err| err.to_string())?
+                .as_bytes(),
+        )
+        .map_err(|err| err.to_string())?;
+    stream.write_all(b"\n").map_err(|err| err.to_string())?;
+    let mut line: String = String::new();
+    reader.read_line(&mut line).map_err(|err| err.to_string())?;
+    let response = serde_json::from_str::<DatabaseRequest>(&line).map_err(|err| err.to_string())?;
+    if let DatabaseMessageBody::LocalId(id) = response.body {
+        Ok(id)
+    } else {
+        Err("Error getting local id from db".to_string())
     }
 }
 
@@ -340,17 +369,18 @@ impl Handler<OrderCancelledFromLocal> for ConnectionHandler {
 
 #[derive(Message)]
 #[rtype(result = "Result<(),String>")]
-pub struct GetMyServerId {
+pub struct GetMySSidAndSLid {
     pub sender_addr: Addr<SSMiddleman>,
 }
 
-impl Handler<GetMyServerId> for ConnectionHandler {
+impl Handler<GetMySSidAndSLid> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: GetMyServerId, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: GetMySSidAndSLid, _ctx: &mut Self::Context) -> Self::Result {
         msg.sender_addr
-            .try_send(super::ss_middleman::GotMyServerId {
-                my_id: self.my_ss_id,
+            .try_send(super::ss_middleman::GotMyIds {
+                my_ss_id: self.my_ss_id,
+                my_sl_id: self.my_sl_id,
             })
             .map_err(|err| err.to_string())?;
         Ok(())
@@ -467,30 +497,29 @@ impl Handler<LeaderElection> for ConnectionHandler {
             let mut my_id_is_greater = true;
             for (server_id, ss_middleman) in self.ss_communicators.iter() {
                 if server_id > &self.my_ss_id {
-                    info!("Found a server with a greater id: {}", server_id);
-                    error!("My id: {}", self.my_ss_id);
+                    info!("Found a server with a greater id: [{}]", server_id);
                     my_id_is_greater = false;
                     ss_middleman
                         .try_send(ss_middleman::SendElectLeader {
-                            my_id: self.my_ss_id,
+                            my_ss_id: self.my_ss_id,
+                            my_sl_id: self.my_sl_id,
                         })
                         .map_err(|err| err.to_string())?;
                 }
             }
             if my_id_is_greater {
-                info!(
-                    "I'm the new leader [{}], notifying all servers",
-                    self.my_ss_id
-                );
+                info!("I'm the new leader [{}]", self.my_ss_id);
                 for (server_id, ss_middleman) in self.ss_communicators.iter() {
                     info!("Notifying server {}", server_id);
                     ss_middleman
                         .try_send(ss_middleman::SendSelectedLeader {
-                            my_id: self.my_ss_id,
+                            my_ss_id: self.my_ss_id,
+                            my_sl_id: self.my_sl_id,
                         })
                         .map_err(|err| err.to_string())?;
                 }
                 self.leader_ss_id = Some(self.my_ss_id);
+                self.leader_sl_id = Some(self.my_sl_id);
                 self.leader_election_running = false;
             }
         }
@@ -501,14 +530,16 @@ impl Handler<LeaderElection> for ConnectionHandler {
 #[derive(Message)]
 #[rtype(result = "Result<(),String>")]
 pub struct LeaderSelected {
-    pub leader_id: u16,
+    pub leader_ss_id: u16,
+    pub leader_sl_id: u16,
 }
 
 impl Handler<LeaderSelected> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: LeaderSelected, _ctx: &mut Self::Context) -> Self::Result {
-        self.leader_ss_id = Some(msg.leader_id);
+        self.leader_ss_id = Some(msg.leader_ss_id);
+        self.leader_sl_id = Some(msg.leader_sl_id);
         self.leader_election_running = false;
         self.order_handler
             .try_send(order_handler::LeaderIsReady {})

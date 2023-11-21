@@ -71,6 +71,7 @@ async fn start_async(
     let servers_handle = ss_communicator::setup_servers_connections(
         connection_handler.clone(),
         servers_listening_port,
+        locals_listening_port,
         rx_from_input_to_ss,
     );
     sender_tx_to_ss
