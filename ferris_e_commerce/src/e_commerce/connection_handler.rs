@@ -5,6 +5,7 @@ use std::net::TcpStream;
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
 use shared::model::db_message_body::DatabaseMessageBody;
 use shared::model::db_request::{RequestCategory, RequestType};
+use shared::model::db_response::DatabaseResponse;
 use shared::model::order::Order;
 use shared::model::{db_request::DatabaseRequest, sl_message::SLMessage, stock_product::Product};
 use tracing::{error, info, warn};
@@ -202,7 +203,7 @@ fn new_local_id_from_db() -> Result<u16, String> {
     stream.write_all(b"\n").map_err(|err| err.to_string())?;
     let mut line: String = String::new();
     reader.read_line(&mut line).map_err(|err| err.to_string())?;
-    let response = serde_json::from_str::<DatabaseRequest>(&line).map_err(|err| err.to_string())?;
+    let response = serde_json::from_str::<DatabaseResponse>(&line).map_err(|err| err.to_string())?;
     if let DatabaseMessageBody::LocalId(id) = response.body {
         Ok(id)
     } else {
