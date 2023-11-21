@@ -1,11 +1,9 @@
 use std::sync::mpsc;
 use std::sync::Arc;
 
-use actix::{
-    dev::ContextFutureSpawner, fut::wrap_future, Actor, Addr, Context, Handler, Message,
-    StreamHandler,
-};
-use actix::{ActorContext, AsyncContext};
+use actix::Actor;
+use actix::Addr;
+use actix::AsyncContext;
 use shared::model::constants::EXIT_MSG;
 use shared::model::constants::SS_INITIAL_PORT;
 use shared::model::constants::SS_MAX_PORT;
@@ -14,68 +12,18 @@ use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 
 use actix_rt::System;
-use tokio::io::{split, WriteHalf};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::split;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpListener as AsyncTcpListener;
 use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::LinesStream;
 
 use crate::e_commerce::connection_handler::AddSSMiddlemanAddr;
+use crate::e_commerce::ss_middleman::LeaderElection;
+use crate::e_commerce::ss_middleman::SSMiddleman;
 
 use super::connection_handler::ConnectionHandler;
-
-pub struct SSMiddleman {
-    connected_server_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
-    connected_server_id: u32,
-}
-
-impl Actor for SSMiddleman {
-    type Context = Context<Self>;
-}
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct LeaderElection {}
-
-impl Handler<LeaderElection> for SSMiddleman {
-    type Result = ();
-
-    fn handle(&mut self, _msg: LeaderElection, _ctx: &mut Self::Context) -> Self::Result {
-        warn!("LeaderElection message received");
-    }
-}
-
-impl StreamHandler<Result<String, std::io::Error>> for SSMiddleman {
-    fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
-        match msg {
-            Ok(msg) => {
-                info!(" Received msg: {}", msg);
-                let response = msg + "\n";
-
-                let writer = self.connected_server_write_stream.clone();
-                wrap_future::<_, Self>(async move {
-                    if writer
-                        .lock()
-                        .await
-                        .write_all(response.as_bytes())
-                        .await
-                        .is_ok()
-                    {
-                        info!("Respuesta enviada al local shop");
-                    } else {
-                        error!("Error al escribir en el stream")
-                    };
-                })
-                .spawn(ctx)
-                // ...
-            }
-            Err(e) => {
-                error!(" Error in received msg: {}", e);
-            }
-        }
-    }
-}
 
 // ====================================================================
 

@@ -1,66 +1,21 @@
 use std::sync::{mpsc, Arc};
 
-use actix::{
-    dev::ContextFutureSpawner, fut::wrap_future, Actor, ActorContext, Addr, Context, StreamHandler,
-};
+use actix::{Actor, Addr, AsyncContext};
 use actix_rt::System;
 use shared::model::constants::EXIT_MSG;
-use tokio::io::{split, WriteHalf};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::split;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpListener as AsyncTcpListener;
 use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_stream::wrappers::LinesStream;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::e_commerce::connection_handler::{AddSLMiddlemanAddr, ConnectionHandler};
 use shared::port_binder::listener_binder::LOCALHOST;
 
-pub struct SLMiddleman {
-    connected_local_shop_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
-    connected_local_shop_id: u32,
-}
-
-impl Actor for SLMiddleman {
-    type Context = Context<Self>;
-}
-
-impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
-    fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
-        match msg {
-            Ok(msg) => {
-                info!(" Received msg: {}", msg);
-                let response = msg + "\n";
-
-                let writer = self.connected_local_shop_write_stream.clone();
-                wrap_future::<_, Self>(async move {
-                    if writer
-                        .lock()
-                        .await
-                        .write_all(response.as_bytes())
-                        .await
-                        .is_ok()
-                    {
-                        info!("Respuesta enviada al local shop");
-                    } else {
-                        error!("Error al escribir en el stream")
-                    };
-                })
-                .spawn(ctx)
-                // ...
-            }
-            Err(e) => {
-                error!(" Error in received msg: {}", e);
-            }
-        }
-    }
-
-    fn finished(&mut self, ctx: &mut Self::Context) {
-        info!("Connection finished.");
-        ctx.stop();
-    }
-}
+use super::sl_middleman::SLMiddleman;
 
 // ====================================================================
 
@@ -127,7 +82,7 @@ fn handle_connected_local_shop(
     let (read_half, write_half) = split(stream);
 
     let sl_middleman_addr = SLMiddleman::create(|ctx| {
-        SLMiddleman::add_stream(LinesStream::new(BufReader::new(read_half).lines()), ctx);
+        ctx.add_stream(LinesStream::new(BufReader::new(read_half).lines()));
         SLMiddleman {
             connected_local_shop_write_stream: Arc::new(Mutex::new(write_half)),
             connected_local_shop_id: local_shop_id,

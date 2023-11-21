@@ -3,10 +3,7 @@ use std::collections::HashMap;
 use actix::{Actor, Addr, Context, Handler, Message};
 use tracing::warn;
 
-use super::{
-    order_handler::OrderHandler, order_worker::OrderWorker, sl_communicator::SLMiddleman,
-    ss_communicator::SSMiddleman,
-};
+use super::{order_worker::OrderWorker, sl_middleman::SLMiddleman, ss_middleman::SSMiddleman};
 
 pub struct ConnectionHandler {
     order_workers: Vec<Addr<OrderWorker>>,
