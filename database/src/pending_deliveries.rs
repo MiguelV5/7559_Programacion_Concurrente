@@ -1,16 +1,13 @@
 //struct and logic for store pending deliveries in memmory
 
 use shared::model::product_to_delivery::ProductToDelivery;
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::collections::HashMap;
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingDeliveries {
     //deliveries is a hashmap with key: order_id and value: order
-    deliveries: Arc<RwLock<HashMap<i32, ProductToDelivery>>>,
+    deliveries: HashMap<i32, ProductToDelivery>,
 }
 
 impl Default for PendingDeliveries {
@@ -23,28 +20,25 @@ impl Default for PendingDeliveries {
 impl PendingDeliveries {
     pub fn new() -> Self {
         PendingDeliveries {
-            deliveries: Arc::new(RwLock::new(HashMap::new())),
+            deliveries: HashMap::new(),
         }
     }
 
     pub fn add_delivery(&mut self, delivery: ProductToDelivery) {
-        let mut deliveries = self.deliveries.write().unwrap();
-        deliveries.insert(delivery.get_order_id() as i32, delivery);
+        self.deliveries
+            .insert(delivery.get_order_id() as i32, delivery);
     }
 
     pub fn get_delivery(&self, order_id: i32) -> Option<ProductToDelivery> {
-        let deliveries = self.deliveries.read().unwrap();
-        deliveries.get(&order_id).cloned()
+        self.deliveries.get(&order_id).cloned()
     }
 
     pub fn remove_delivery(&mut self, order_id: i32) {
-        let mut deliveries = self.deliveries.write().unwrap();
-        deliveries.remove(&order_id);
+        self.deliveries.remove(&order_id);
     }
 
     pub fn get_all_deliveries(&self) -> Vec<ProductToDelivery> {
-        let deliveries = self.deliveries.read().unwrap();
-        deliveries.values().cloned().collect()
+        self.deliveries.values().cloned().collect()
     }
 }
 
