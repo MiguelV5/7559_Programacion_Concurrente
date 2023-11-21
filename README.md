@@ -48,6 +48,12 @@ cargo run -p e_commerce -- -ss <servers_listening_port> -sl <locals_listening_po
 cargo run -p ferris_local_shop -- -o <orders_file_path> -s <stock_file_path> -w <num_workers>
 ```
 
+### Database
+
+```bash
+cargo run -p database
+```
+
 ### Comandos
 
 Ambos a su vez proveen comandos para interactuar con el sistema durante la ejecución:
