@@ -71,6 +71,7 @@ async fn start_async(
     let servers_handle = ss_communicator::setup_servers_connections(
         connection_handler.clone(),
         servers_listening_port,
+        locals_listening_port,
         rx_from_input_to_ss,
     );
     sender_tx_to_ss
@@ -86,16 +87,18 @@ async fn start_async(
 
 async fn start_actors(
     orders: Vec<Order>,
-    sl_id: u16,
     ss_id: u16,
+    sl_id: u16,
 ) -> Result<(Addr<OrderHandler>, Addr<ConnectionHandler>), Box<dyn Error>> {
     let order_handler = OrderHandler::new(&orders).start();
 
-    let connection_handler = ConnectionHandler::new(ss_id, sl_id).start();
+    let connection_handler = ConnectionHandler::new(order_handler.clone(), ss_id, sl_id).start();
 
-    let order_worker = OrderWorker::new(order_handler.clone(), connection_handler.clone()).start();
+    let order_worker =
+        OrderWorker::new(1, order_handler.clone(), connection_handler.clone()).start();
     order_handler
         .send(order_handler::AddOrderWorkerAddr {
+            id: 1,
             order_worker_addr: order_worker.clone(),
         })
         .await?;

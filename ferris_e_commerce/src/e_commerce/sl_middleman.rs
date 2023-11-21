@@ -46,15 +46,16 @@ impl Actor for SLMiddleman {
 impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
+            info!("[ONLINE RECEIVER SL] Received msg: {}", msg);
             if ctx
                 .address()
                 .try_send(HandleOnlineMsg { received_msg: msg })
                 .is_err()
             {
-                error!("[SLMiddleman] Error sending msg to handler.");
+                error!("[ONLINE RECEIVER SL] Error sending msg to handler");
             }
         } else if let Err(err) = msg {
-            error!("[SLMiddleman] Error in received msg: {}.", err);
+            error!("[ONLINE RECEIVER SL] Error in received msg: {}", err);
         }
     }
 
@@ -240,27 +241,27 @@ impl Handler<HandleOrderCancelledMessage> for SLMiddleman {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct SendMessage {
+pub struct SendOnlineMessage {
     pub msg_to_send: String,
 }
 
-impl Handler<SendMessage> for SLMiddleman {
+impl Handler<SendOnlineMessage> for SLMiddleman {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: SendMessage, ctx: &mut Self::Context) -> Self::Result {
-        let response = msg.msg_to_send + "\n";
+    fn handle(&mut self, msg: SendOnlineMessage, ctx: &mut Self::Context) -> Self::Result {
+        let online_msg = msg.msg_to_send + "\n";
         let writer = self.connected_local_shop_write_stream.clone();
         wrap_future::<_, Self>(async move {
             if writer
                 .lock()
                 .await
-                .write_all(response.as_bytes())
+                .write_all(online_msg.as_bytes())
                 .await
                 .is_ok()
             {
-                info!("[SLMiddleman] Send msg finished.");
+                info!("[ONLINE SENDER SL]: {}", online_msg);
             } else {
-                error!("[SLMiddleman] Error while writing to stream")
+                error!("[ONLINE SENDER SL]: Error writing to stream")
             };
         })
         .spawn(ctx);

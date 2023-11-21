@@ -7,7 +7,8 @@ edition = "2021"
 
 [dependencies]
 shared = { path = "../shared" }
-# rand = "0.8.5"
+serde = { version = "1.0.144", features = ["derive"] }
+serde_json = "1.0.85"
 actix = "0.13.0"
 actix-rt = "2.0"                                               # <-- Runtime for actix
 tracing = "0.1.40"

@@ -2,6 +2,8 @@ use std::{error::Error, fmt};
 
 use serde::{Deserialize, Serialize};
 
+use super::order::Order;
+
 #[derive(Debug)]
 pub enum SSMessageError {
     ErrorParsing(String),
@@ -16,10 +18,33 @@ impl Error for SSMessageError {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum SSMessage {
-    ElectLeader { self_ip: String },
-    AckElectLeader { self_ip: String },
-    SelectedLeader { leader_ip: String },
-    AckSelectedLeader { self_ip: String },
+    // General messages
+    ElectLeader {
+        requestor_id: u16,
+    },
+    AckElectLeader,
+    SelectedLeader {
+        leader_ss_id: u16,
+        leader_sl_id: u16,
+    },
+    DelegateOrderToLeader {
+        order: Order,
+    },
+    AckDelegateOrderToLeader {
+        order: Order,
+    },
+    SolvedPrevDelegatedOrder {
+        order: Order,
+    },
+    AckSolvedPrevDelegatedOrder {
+        order: Order,
+    },
+    // Handshake messages
+    GetSSidAndSLid,
+    AckGetSSidAndSLid {
+        ss_id: u16,
+        sl_id: u16,
+    },
 }
 
 impl SSMessage {

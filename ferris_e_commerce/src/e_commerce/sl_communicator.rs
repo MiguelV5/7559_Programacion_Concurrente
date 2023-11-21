@@ -61,11 +61,10 @@ async fn handle_communication_loop(
     connection_handler: Addr<ConnectionHandler>,
 ) -> Result<(), String> {
     loop {
-        if is_exit_required(&rx_from_input) {
-            return Ok(());
-        }
-
         if let Ok((stream, stream_addr)) = listener.accept().await {
+            if is_exit_required(&rx_from_input) {
+                return Ok(());
+            }
             info!(" [{:?}] Client connected", stream_addr);
             handle_connected_local_shop(stream, &connection_handler)?;
         };

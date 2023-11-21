@@ -85,6 +85,9 @@ async fn connect_to_e_commerce(
                 .await
                 .map_err(|err| err.to_string())??;
             connect_to_leader_e_commerce(leader_addr, connection_handler_addr).await?;
+        } else if msg == Some(LEADER_NOT_ELECTED.to_string()) {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            return Ok(());
         } else {
             error!("[LSComminicator] Unexpected msg: {}", msg.unwrap());
         }
