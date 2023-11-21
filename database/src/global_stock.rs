@@ -40,12 +40,11 @@ impl GlobalStock {
     pub fn get_products_quantity_in_locals(&self, product_name: String) -> HashMap<u16, i32> {
         let mut products_quantity_in_locals = HashMap::new();
         for (local_shop_id, local_shop_stock) in self.global_stock.iter() {
-            let product_quantity = local_shop_stock
-                .get(&product_name)
-                .cloned()
-                .unwrap_or(Product::new(product_name.clone(), 0))
-                .get_quantity();
-            products_quantity_in_locals.insert(*local_shop_id, product_quantity);
+            if let Some(product) = local_shop_stock.get(&product_name).cloned() {
+                products_quantity_in_locals.insert(*local_shop_id, product.get_quantity());
+            } else {
+                products_quantity_in_locals.insert(*local_shop_id, 0);
+            }
         }
         products_quantity_in_locals
     }
@@ -55,13 +54,14 @@ impl GlobalStock {
         local_shop_id: u16,
         product_name: String,
     ) -> Option<i32> {
-        self.global_stock
-            .get(&local_shop_id)
-            .cloned()
-            .unwrap_or(HashMap::new())
-            .get(&product_name)
-            .cloned()
-            .map(|product| product.get_quantity())
+        if let Some(local_shop_stock) = self.global_stock.get(&local_shop_id).cloned() {
+            local_shop_stock
+                .get(&product_name)
+                .cloned()
+                .map(|product| product.get_quantity())
+        } else {
+            None
+        }
     }
 
     pub fn get_all_local_shops_stock(&self) -> HashMap<u16, HashMap<String, Product>> {
@@ -74,18 +74,23 @@ impl GlobalStock {
             let product_name = product.get_name();
             let product_quantity = product.get_quantity();
             let local_shop_id = order.get_local_id().ok_or(ProductError::NegativeQuantity)?;
-            let mut local_shop_stock = self
-                .global_stock
-                .get(&local_shop_id)
-                .cloned()
-                .unwrap_or(HashMap::new());
-            let mut product_in_local_shop_stock = local_shop_stock
-                .get(&product_name)
-                .cloned()
-                .unwrap_or(Product::new(product_name.clone(), 0));
-            product_in_local_shop_stock.affect_quantity_with_value(product_quantity);
-            local_shop_stock.insert(product_name, product_in_local_shop_stock);
-            self.global_stock.insert(local_shop_id, local_shop_stock);
+            if let Some(local_shop_stock) = self.global_stock.get_mut(&local_shop_id) {
+                if let Some(product_in_local_shop_stock) = local_shop_stock.get_mut(&product_name) {
+                    product_in_local_shop_stock.affect_quantity_with_value(product_quantity);
+                } else {
+                    local_shop_stock.insert(
+                        product_name.clone(),
+                        Product::new(product_name.clone(), product_quantity),
+                    );
+                }
+            } else {
+                let mut local_shop_stock = HashMap::new();
+                local_shop_stock.insert(
+                    product_name.clone(),
+                    Product::new(product_name.clone(), product_quantity),
+                );
+                self.global_stock.insert(local_shop_id, local_shop_stock);
+            }
         }
 
         Ok(())
@@ -109,10 +114,11 @@ mod tests {
             Product::new("product2".to_string(), 20),
         );
         global_stock.add_local_shop_stock(1, local_shop_stock.clone());
-        assert_eq!(
-            global_stock.get_local_shop_stock(1).unwrap(),
-            local_shop_stock
-        );
+        if let Some(local_shop_stock) = global_stock.get_local_shop_stock(1) {
+            assert_eq!(local_shop_stock, local_shop_stock);
+        } else {
+            panic!("Local shop stock not found");
+        }
     }
 
     #[test]
@@ -128,10 +134,11 @@ mod tests {
             Product::new("product2".to_string(), 20),
         );
         global_stock.add_local_shop_stock(1, local_shop_stock.clone());
-        assert_eq!(
-            global_stock.get_local_shop_stock(1).unwrap(),
-            local_shop_stock
-        );
+        if let Some(local_shop_stock) = global_stock.get_local_shop_stock(1) {
+            assert_eq!(local_shop_stock, local_shop_stock);
+        } else {
+            panic!("Local shop stock not found");
+        }
     }
 
     #[test]

@@ -170,6 +170,8 @@ dependencies = [
  "actix",
  "actix-rt",
  "futures-channel",
+ "serde",
+ "serde_json",
  "shared",
  "tokio",
  "tokio-stream",

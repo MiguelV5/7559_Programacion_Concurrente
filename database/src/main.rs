@@ -1,4 +1,5 @@
 #[actix_rt::main]
-async fn main() {
-    database::run().await;
+async fn main() -> Result<(), String> {
+    database::run().await?;
+    Ok(())
 }

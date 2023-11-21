@@ -20,8 +20,6 @@ pub fn setup_input_listener(
         info!("Input listener started");
         let mut reader = std::io::stdin().lines();
 
-        // Im going to refactor this function to recv order_pusher and both tx_to_sl and tx_to_ss from 3 different channels
-
         let order_pusher = receiver_of_order_hander.recv().map_err(|e| e.to_string())?;
         let tx_to_sl = receiver_of_tx_to_sl.recv().map_err(|e| e.to_string())?;
         let tx_to_ss = receiver_of_tx_to_ss.recv().map_err(|e| e.to_string())?;
@@ -41,7 +39,9 @@ pub fn setup_input_listener(
                 break;
             } else if line == START_ORDERS_MSG {
                 info!("Push command received");
-                if let Ok(_send_res) = order_pusher.try_send(super::order_handler::PushOrders {}) {
+                if let Ok(_send_res) =
+                    order_pusher.try_send(super::order_handler::SendFirstOrders {})
+                {
                     info!("PushOrders message sent successfully");
                 } else {
                     info!("Error sending PushOrders message");

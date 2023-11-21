@@ -56,10 +56,7 @@ impl StreamHandler<Result<String, std::io::Error>> for LSMiddleman {
 
     fn finished(&mut self, ctx: &mut Self::Context) {
         info!("[LSMiddleman] Finished.");
-        self.connection_handler_addr
-            .try_send(RemoveLSMiddleman {})
-            .map_err(|err| err.to_string())
-            .unwrap();
+        self.connection_handler_addr.do_send(RemoveLSMiddleman {});
         ctx.stop();
     }
 }
@@ -89,11 +86,13 @@ impl Handler<HandleOnlineMsg> for LSMiddleman {
 
     fn handle(&mut self, msg: HandleOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
         match SLMessage::from_string(&msg.received_msg).map_err(|err| err.to_string())? {
-            SLMessage::LeaderMessage {
-                leader_id: leader_ip,
-            } => ctx
+            SLMessage::LeaderMessage { leader_id } => ctx
                 .address()
-                .try_send(HandleLeaderMessage { leader_ip })
+                .try_send(HandleLeaderMessage { leader_id })
+                .map_err(|err| err.to_string()),
+            SLMessage::DontHaveLeaderYet => ctx
+                .address()
+                .try_send(HandleLeaderNotYetElected {})
                 .map_err(|err| err.to_string()),
             SLMessage::LocalRegisteredMessage { local_id } => ctx
                 .address()
@@ -118,19 +117,36 @@ impl Handler<HandleOnlineMsg> for LSMiddleman {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 struct HandleLeaderMessage {
-    leader_ip: u16,
+    leader_id: u16,
 }
 
 impl Handler<HandleLeaderMessage> for LSMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: HandleLeaderMessage, _: &mut Self::Context) -> Self::Result {
-        info!("[LSMiddleman] Leader message received: {}.", msg.leader_ip);
+        info!("[LSMiddleman] Leader message received: {}.", msg.leader_id);
         self.connection_handler_addr
             .try_send(LeaderMessage {
-                leader_ip: msg.leader_ip,
+                leader_ip: msg.leader_id,
             })
             .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+struct HandleLeaderNotYetElected {}
+
+impl Handler<HandleLeaderNotYetElected> for LSMiddleman {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: HandleLeaderNotYetElected, ctx: &mut Self::Context) -> Self::Result {
+        info!("[LSMiddleman] Leader not yet elected.");
+        self.connection_handler_addr
+            .try_send(connection_handler::LeaderNotYetElected {})
+            .map_err(|err| err.to_string())?;
+        ctx.stop();
+        Ok(())
     }
 }
 
@@ -144,7 +160,10 @@ impl Handler<HandleLocalRegisteredMessage> for LSMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: HandleLocalRegisteredMessage, _: &mut Self::Context) -> Self::Result {
-        info!("[LSMiddleman] Local registered with id {}.", msg.local_id);
+        info!(
+            "[LSMiddleman] Local trying to register received: {}.",
+            msg.local_id
+        );
 
         self.connection_handler_addr
             .try_send(connection_handler::LocalRegistered {

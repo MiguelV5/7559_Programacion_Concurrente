@@ -131,9 +131,6 @@ impl Handler<AddNewOrderWorker> for OrderHandlerActor {
             OrderWorkerStatus::new(worker_id, msg.worker_addr),
         );
 
-        // ctx.address()
-        //     .try_send(SendOrder { worker_id })
-        //     .map_err(|err| err.to_string())
         Ok(())
     }
 }

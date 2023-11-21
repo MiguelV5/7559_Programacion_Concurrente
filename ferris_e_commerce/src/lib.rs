@@ -6,7 +6,10 @@ pub mod e_commerce;
 use std::{error::Error, fmt};
 
 use e_commerce::constants::DEFAULT_ORDERS_FILEPATH;
-use shared::model::constants::{SL_INITIAL_PORT, SS_INITIAL_PORT};
+use shared::{
+    model::constants::{SL_INITIAL_PORT, SS_INITIAL_PORT},
+    port_binder::listener_binder::LOCALHOST,
+};
 use tracing::{error, info};
 
 #[derive(Debug)]
@@ -22,6 +25,17 @@ impl fmt::Display for EcommerceError {
     }
 }
 impl Error for EcommerceError {}
+
+pub fn run() -> Result<(), EcommerceError> {
+    init_logger();
+    let (servers_listening_port, locals_listening_port, orders_path) = parse_args()?;
+    info!("Starting e_commerce");
+
+    e_commerce::handler::start(&orders_path, servers_listening_port, locals_listening_port)
+        .map_err(|err| EcommerceError::InternalError(err.to_string()))?;
+
+    Ok(())
+}
 
 fn init_logger() {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -70,6 +84,8 @@ fn parse_args() -> Result<(u16, u16, String), EcommerceError> {
         }
     }
 
+    check_if_given_ports_are_valid(servers_listening_port, locals_listening_port)?;
+
     Ok((
         servers_listening_port,
         locals_listening_port,
@@ -77,13 +93,28 @@ fn parse_args() -> Result<(u16, u16, String), EcommerceError> {
     ))
 }
 
-pub fn run() -> Result<(), EcommerceError> {
-    init_logger();
-    let (servers_listening_port, locals_listening_port, orders_path) = parse_args()?;
-    info!("Starting e_commerce");
-
-    e_commerce::handler::start(&orders_path, servers_listening_port, locals_listening_port)
-        .map_err(|err| EcommerceError::InternalError(err.to_string()))?;
+fn check_if_given_ports_are_valid(
+    servers_listening_port: u16,
+    locals_listening_port: u16,
+) -> Result<(), EcommerceError> {
+    if servers_listening_port == locals_listening_port {
+        error!("Servers and locals listening ports must be different");
+        return Err(EcommerceError::ArgsParsingError(String::from(
+            "Servers and locals listening ports must be different",
+        )));
+    }
+    if std::net::TcpListener::bind(format!("{}:{}", LOCALHOST, servers_listening_port)).is_err() {
+        error!("Locals listening port is already in use");
+        return Err(EcommerceError::ArgsParsingError(String::from(
+            "Invalid servers listening port",
+        )));
+    }
+    if std::net::TcpListener::bind(format!("{}:{}", LOCALHOST, locals_listening_port)).is_err() {
+        error!("Servers listening port is already in use");
+        return Err(EcommerceError::ArgsParsingError(String::from(
+            "Invalid locals listening port",
+        )));
+    }
 
     Ok(())
 }
