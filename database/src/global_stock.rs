@@ -1,6 +1,9 @@
 use std::{collections::HashMap, error::Error};
 
-use shared::model::{order::Order, stock_product::{ProductError, Product}};
+use shared::model::{
+    order::Order,
+    stock_product::{Product, ProductError},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GlobalStock {
@@ -37,7 +40,11 @@ impl GlobalStock {
     pub fn get_products_quantity_in_locals(&self, product_name: String) -> HashMap<u16, i32> {
         let mut products_quantity_in_locals = HashMap::new();
         for (local_shop_id, local_shop_stock) in self.global_stock.iter() {
-            let product_quantity = local_shop_stock.get(&product_name).cloned().unwrap_or(Product::new(product_name.clone(), 0)).get_quantity();
+            let product_quantity = local_shop_stock
+                .get(&product_name)
+                .cloned()
+                .unwrap_or(Product::new(product_name.clone(), 0))
+                .get_quantity();
             products_quantity_in_locals.insert(*local_shop_id, product_quantity);
         }
         products_quantity_in_locals

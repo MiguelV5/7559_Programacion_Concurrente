@@ -35,5 +35,5 @@ pub enum RequestType {
     GetOne,
     GetAll,
     Post,
-    None, 
+    None,
 }

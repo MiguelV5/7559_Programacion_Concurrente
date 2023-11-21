@@ -74,7 +74,7 @@ impl DBHandlerActor {
                     ResponseStatus::Error("Bad Request".to_string()),
                     DatabaseMessageBody::None,
                 ),
-            }
+            },
             RequestCategory::ProductStock => match request.request_type {
                 RequestType::GetAll => {
                     self.global_stock.get_all_local_shops_stock();
@@ -85,7 +85,7 @@ impl DBHandlerActor {
                         ),
                     )
                 }
-            
+
                 RequestType::GetOne => {
                     //get product quantities from local shops
 
@@ -128,12 +128,10 @@ impl DBHandlerActor {
                 ),
             },
             RequestCategory::NewLocalId => match request.request_type {
-                RequestType::GetOne => {
-                    DatabaseResponse::new(
-                        ResponseStatus::Ok,
-                        DatabaseMessageBody::LocalId(self.get_new_local_id()),
-                    )
-                }
+                RequestType::GetOne => DatabaseResponse::new(
+                    ResponseStatus::Ok,
+                    DatabaseMessageBody::LocalId(self.get_new_local_id()),
+                ),
                 RequestType::None | RequestType::Post | RequestType::GetAll => {
                     DatabaseResponse::new(
                         ResponseStatus::Error("Bad Request".to_string()),
