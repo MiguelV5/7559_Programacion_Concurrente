@@ -11,7 +11,7 @@ use shared::model::stock_product::Product;
 use tokio::io::{AsyncWriteExt, WriteHalf};
 use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::Mutex;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::e_commerce::connection_handler::RemoveSLMiddleman;
 
@@ -46,7 +46,7 @@ impl Actor for SLMiddleman {
 impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
-            info!("[ONLINE RECEIVER SL] Received msg: {}", msg);
+            trace!("[ONLINE RECEIVER SL] Received msg: {}", msg);
             if ctx
                 .address()
                 .try_send(HandleOnlineMsg { received_msg: msg })
@@ -61,14 +61,14 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
 
     fn finished(&mut self, ctx: &mut Self::Context) {
         if let Some(id) = self.id {
-            info!(
+            trace!(
                 "[SLMiddleman] Connection finished from local id {:?}.",
                 self.id
             );
             self.connection_handler_addr
                 .do_send(RemoveSLMiddleman { id });
         } else {
-            warn!("[SLMiddleman] Connection finished from unknown local.")
+            debug!("[SLMiddleman] Connection finished from unknown local.")
         }
 
         ctx.stop();
@@ -257,7 +257,7 @@ impl Handler<SendOnlineMessage> for SLMiddleman {
                 .await
                 .is_ok()
             {
-                info!("[ONLINE SENDER SL]: {}", online_msg);
+                trace!("[ONLINE SENDER SL]: {}", online_msg);
             } else {
                 error!("[ONLINE SENDER SL]: Error writing to stream")
             };

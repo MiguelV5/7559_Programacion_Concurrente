@@ -8,7 +8,7 @@ use tracing::{error, info, warn};
 
 use crate::local_shop::{
     constants::{LEADER_ADRR, LEADER_NOT_ELECTED, WAKE_UP},
-    ls_middleman::{CloseConnection, SendMessage},
+    ls_middleman::{CloseConnection, SendOnlineMessage},
     stock_handler,
 };
 
@@ -142,7 +142,7 @@ impl Handler<AddLSMiddleman> for ConnectionHandlerActor {
         self.curr_e_commerce_addr = Some(msg.e_commerce_addr);
 
         msg.ls_middleman
-            .try_send(SendMessage {
+            .try_send(SendOnlineMessage {
                 msg_to_send: LSMessage::AskLeaderMessage
                     .to_string()
                     .map_err(|err| err.to_string())?,
@@ -171,7 +171,7 @@ impl Handler<LeaderMessage> for ConnectionHandlerActor {
                         self.ls_middleman
                             .as_ref()
                             .ok_or("Should not happen, the LSMiddleman must be set".to_string())?
-                            .try_send(SendMessage {
+                            .try_send(SendOnlineMessage {
                                 msg_to_send: LSMessage::LoginLocalMessage { local_id }
                                     .to_string()
                                     .map_err(|err| err.to_string())?,
@@ -184,7 +184,7 @@ impl Handler<LeaderMessage> for ConnectionHandlerActor {
                         self.ls_middleman
                             .as_ref()
                             .ok_or("Should not happen, the LSMiddleman must be set".to_string())?
-                            .try_send(SendMessage {
+                            .try_send(SendOnlineMessage {
                                 msg_to_send: LSMessage::RegisterLocalMessage
                                     .to_string()
                                     .map_err(|err| err.to_string())?,
@@ -335,7 +335,7 @@ impl Handler<ResponseAllStockMessage> for ConnectionHandlerActor {
         info!("[ConnectionHandler] All stock received.");
         if let Some(ls_middleman) = &self.ls_middleman {
             ls_middleman
-                .try_send(SendMessage {
+                .try_send(SendOnlineMessage {
                     msg_to_send: LSMessage::Stock { stock: msg.stock }
                         .to_string()
                         .map_err(|err| err.to_string())?,
@@ -489,7 +489,7 @@ impl Handler<TrySendFinishedLocalOrder> for ConnectionHandlerActor {
             message
         );
         ls_middleman
-            .try_send(SendMessage {
+            .try_send(SendOnlineMessage {
                 msg_to_send: message.to_string().map_err(|err| err.to_string())?,
             })
             .map_err(|err| err.to_string())?;
@@ -530,7 +530,7 @@ impl Handler<TrySendFinishedWebOrder> for ConnectionHandlerActor {
             message
         );
         ls_middleman
-            .try_send(SendMessage {
+            .try_send(SendOnlineMessage {
                 msg_to_send: message.to_string().map_err(|err| err.to_string())?,
             })
             .map_err(|err| err.to_string())?;

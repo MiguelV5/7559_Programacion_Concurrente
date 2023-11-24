@@ -42,20 +42,21 @@ impl LSMiddleman {
 impl StreamHandler<Result<String, std::io::Error>> for LSMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
+            trace!("[ONLINE RECEIVER LS] Received msg: {}", msg);
             if ctx
                 .address()
                 .try_send(HandleOnlineMsg { received_msg: msg })
                 .is_err()
             {
-                error!("[LSMiddleman] Error sending msg to handler.");
+                error!("[ONLINE RECEIVER LS] Error sending msg to handler");
             }
         } else if let Err(err) = msg {
-            error!("[LSMiddleman] Error in received msg: {}.", err);
+            error!("[ONLINE RECEIVER LS] Error in received msg: {}", err);
         }
     }
 
     fn finished(&mut self, ctx: &mut Self::Context) {
-        info!("[LSMiddleman] Finished.");
+        trace!("[ONLINE RECEIVER LS] Connection closed");
         self.connection_handler_addr.do_send(RemoveLSMiddleman {});
         ctx.stop();
     }
@@ -219,27 +220,27 @@ impl Handler<HandleWorkNewOrderMessage> for LSMiddleman {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct SendMessage {
+pub struct SendOnlineMessage {
     pub msg_to_send: String,
 }
 
-impl Handler<SendMessage> for LSMiddleman {
+impl Handler<SendOnlineMessage> for LSMiddleman {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: SendMessage, ctx: &mut Self::Context) -> Self::Result {
-        let response = msg.msg_to_send + "\n";
+    fn handle(&mut self, msg: SendOnlineMessage, ctx: &mut Self::Context) -> Self::Result {
+        let online_msg = msg.msg_to_send + "\n";
         let writer = self.connected_server_write_stream.clone();
         wrap_future::<_, Self>(async move {
             if writer
                 .lock()
                 .await
-                .write_all(response.as_bytes())
+                .write_all(online_msg.as_bytes())
                 .await
                 .is_ok()
             {
-                trace!("[LSMiddleman] Send msg finished.");
+                trace!("[ONLINE SENDER LS]: {}", online_msg);
             } else {
-                error!("[LSMiddleman] Error while writing to stream")
+                error!("[ONLINE SENDER LS]: Error writing to stream")
             };
         })
         .spawn(ctx);

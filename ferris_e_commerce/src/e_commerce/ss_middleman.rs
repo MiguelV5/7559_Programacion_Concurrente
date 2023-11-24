@@ -6,7 +6,7 @@ use actix::{
 use actix::{ActorContext, Addr, AsyncContext};
 use shared::model::order::Order;
 use shared::model::ss_message::SSMessage;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 use tokio::io::AsyncWriteExt;
 use tokio::io::WriteHalf;
@@ -33,7 +33,7 @@ impl Actor for SSMiddleman {
 impl StreamHandler<Result<String, std::io::Error>> for SSMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
-            info!("[ONLINE RECEIVER SS] Received msg: {}", msg);
+            trace!("[ONLINE RECEIVER SS] Received msg: {}", msg);
             if ctx
                 .address()
                 .try_send(HandleOnlineMsg { received_msg: msg })
@@ -47,7 +47,7 @@ impl StreamHandler<Result<String, std::io::Error>> for SSMiddleman {
     }
 
     fn finished(&mut self, ctx: &mut Self::Context) {
-        info!("[ONLINE RECEIVER SS] Connection closed");
+        trace!("[ONLINE RECEIVER SS] Connection closed");
         if let Some(server_id) = self.connected_server_ss_id {
             self.connection_handler
                 .do_send(CheckIfTheOneWhoClosedWasLeader {
@@ -149,7 +149,7 @@ impl Handler<SendOnlineMsg> for SSMiddleman {
                 .await
                 .is_ok()
             {
-                info!("[ONLINE SENDER SS]: {}", online_msg);
+                trace!("[ONLINE SENDER SS]: {}", online_msg);
             } else {
                 error!("[ONLINE SENDER SS]: Error writing to stream")
             };
