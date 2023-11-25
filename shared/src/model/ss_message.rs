@@ -33,11 +33,9 @@ pub enum SSMessage {
     AckDelegateOrderToLeader {
         order: Order,
     },
-    SolvedPrevDelegatedOrder {
+    SolvedPreviouslyDelegatedOrder {
         order: Order,
-    },
-    AckSolvedPrevDelegatedOrder {
-        order: Order,
+        was_completed: bool,
     },
     // Handshake messages
     GetSSidAndSLid,

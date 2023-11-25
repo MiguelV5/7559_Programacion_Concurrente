@@ -22,3 +22,12 @@ pub enum ResponseStatus {
     Ok,
     Error(String),
 }
+
+impl ResponseStatus {
+    pub fn is_ok(&self) -> bool {
+        match self {
+            ResponseStatus::Ok => true,
+            ResponseStatus::Error(_) => false,
+        }
+    }
+}

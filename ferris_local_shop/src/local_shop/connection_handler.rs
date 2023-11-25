@@ -29,7 +29,7 @@ pub struct ConnectionHandlerActor {
     ls_middleman: Option<Addr<LSMiddleman>>,
     tx_close_connection: Option<Sender<String>>,
 
-    orders_to_send: Vec<(Order, bool)>,
+    order_results_pending_to_report: Vec<(Order, bool)>,
 }
 
 impl ConnectionHandlerActor {
@@ -45,7 +45,7 @@ impl ConnectionHandlerActor {
             ls_middleman: None,
             tx_close_connection: None,
             curr_e_commerce_addr: None,
-            orders_to_send: Vec::new(),
+            order_results_pending_to_report: Vec::new(),
         }
     }
 }
@@ -232,10 +232,9 @@ impl Handler<LocalRegistered> for ConnectionHandlerActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: LocalRegistered, ctx: &mut Context<Self>) -> Self::Result {
-        info!("[ConnectionHandler] Registering local with e-commerce.");
         self.local_id = Some(msg.local_id);
         ctx.address()
-            .try_send(TrySendOneOrder {})
+            .try_send(TrySendOrderResults {})
             .map_err(|err| err.to_string())?;
         Ok(())
     }
@@ -369,17 +368,17 @@ impl Handler<WorkNewOrder> for ConnectionHandlerActor {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct TrySendOneOrder {}
+pub struct TrySendOrderResults {}
 
-impl Handler<TrySendOneOrder> for ConnectionHandlerActor {
+impl Handler<TrySendOrderResults> for ConnectionHandlerActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, _: TrySendOneOrder, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _: TrySendOrderResults, ctx: &mut Context<Self>) -> Self::Result {
         if self.local_id.is_none() || self.ls_middleman.is_none() {
             return Ok(());
         }
 
-        if let Some((order, was_finished)) = self.orders_to_send.pop() {
+        if let Some((order, was_finished)) = self.order_results_pending_to_report.pop() {
             ctx.address()
                 .try_send(TrySendFinishedOrder {
                     order,
@@ -387,8 +386,10 @@ impl Handler<TrySendOneOrder> for ConnectionHandlerActor {
                 })
                 .map_err(|err| err.to_string())?;
             ctx.address()
-                .try_send(TrySendOneOrder {})
+                .try_send(TrySendOrderResults {})
                 .map_err(|err| err.to_string())?;
+        } else {
+            info!("[ConnectionHandler] No order results pending to report.");
         }
         Ok(())
     }
@@ -452,7 +453,8 @@ impl Handler<SaveNewFinishedOrder> for ConnectionHandlerActor {
             "[ConnectionHandler] Saving new finished order to send: {:?}.",
             msg
         );
-        self.orders_to_send.push((msg.order, msg.was_finished));
+        self.order_results_pending_to_report
+            .push((msg.order, msg.was_finished));
         Ok(())
     }
 }
@@ -494,7 +496,7 @@ impl Handler<TrySendFinishedLocalOrder> for ConnectionHandlerActor {
             })
             .map_err(|err| err.to_string())?;
         ctx.address()
-            .try_send(TrySendOneOrder {})
+            .try_send(TrySendOrderResults {})
             .map_err(|err| err.to_string())
     }
 }
@@ -535,7 +537,7 @@ impl Handler<TrySendFinishedWebOrder> for ConnectionHandlerActor {
             })
             .map_err(|err| err.to_string())?;
         ctx.address()
-            .try_send(TrySendOneOrder {})
+            .try_send(TrySendOrderResults {})
             .map_err(|err| err.to_string())
     }
 }

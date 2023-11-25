@@ -20,8 +20,8 @@ impl Error for SLMessageError {}
 pub enum SLMessage {
     LeaderMessage { leader_id: u16 },
     DontHaveLeaderYet,
-    LocalRegisteredMessage { local_id: u16 },
-    LocalLoggedInMessage,
+    LocalSuccessfullyRegistered { local_id: u16 },
+    LocalSuccessfullyLoggedIn,
     AskAllStock,
     WorkNewOrder { order: Order },
 }

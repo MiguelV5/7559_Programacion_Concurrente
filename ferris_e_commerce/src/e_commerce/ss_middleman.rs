@@ -98,11 +98,11 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
             SSMessage::AckDelegateOrderToLeader { order } => {
                 info!("ORDER DELEGATED ACK: {:?}", order);
             }
-            SSMessage::SolvedPrevDelegatedOrder { order } => {
+            SSMessage::SolvedPreviouslyDelegatedOrder {
+                order,
+                was_completed,
+            } => {
                 info!("ORDER SOLVED: {:?}", order);
-            }
-            SSMessage::AckSolvedPrevDelegatedOrder { order } => {
-                info!("ORDER SOLVED ACK: {:?}", order);
             }
             SSMessage::GetSSidAndSLid => {
                 self.connection_handler
@@ -278,5 +278,31 @@ impl Handler<SendDelegateOrderToLeader> for SSMiddleman {
             })
             .map_err(|err| err.to_string())?;
         Ok(())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct RedirectedOrderResult {
+    pub order: Order,
+    pub was_completed: bool,
+}
+
+impl Handler<RedirectedOrderResult> for SSMiddleman {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: RedirectedOrderResult, ctx: &mut Self::Context) -> Self::Result {
+        let order_result = SSMessage::SolvedPreviouslyDelegatedOrder {
+            order: msg.order,
+            was_completed: msg.was_completed,
+        }
+        .to_string()
+        .map_err(|err| err.to_string())?;
+
+        ctx.address()
+            .try_send(SendOnlineMsg {
+                msg_to_send: order_result,
+            })
+            .map_err(|err| err.to_string())
     }
 }

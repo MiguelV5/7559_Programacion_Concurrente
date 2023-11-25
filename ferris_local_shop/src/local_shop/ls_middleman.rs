@@ -95,13 +95,13 @@ impl Handler<HandleOnlineMsg> for LSMiddleman {
                 .address()
                 .try_send(HandleLeaderNotYetElected {})
                 .map_err(|err| err.to_string()),
-            SLMessage::LocalRegisteredMessage { local_id } => ctx
+            SLMessage::LocalSuccessfullyRegistered { local_id } => ctx
                 .address()
-                .try_send(HandleLocalRegisteredMessage { local_id })
+                .try_send(HandleLocalSuccessfulRegister { local_id })
                 .map_err(|err| err.to_string()),
-            SLMessage::LocalLoggedInMessage => ctx
+            SLMessage::LocalSuccessfullyLoggedIn => ctx
                 .address()
-                .try_send(HandleLocalLoggedInMessage {})
+                .try_send(HandleLocalSuccessfulLogIn {})
                 .map_err(|err| err.to_string()),
             SLMessage::AskAllStock => ctx
                 .address()
@@ -153,16 +153,20 @@ impl Handler<HandleLeaderNotYetElected> for LSMiddleman {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-struct HandleLocalRegisteredMessage {
+struct HandleLocalSuccessfulRegister {
     local_id: u16,
 }
 
-impl Handler<HandleLocalRegisteredMessage> for LSMiddleman {
+impl Handler<HandleLocalSuccessfulRegister> for LSMiddleman {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: HandleLocalRegisteredMessage, _: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        msg: HandleLocalSuccessfulRegister,
+        _: &mut Self::Context,
+    ) -> Self::Result {
         info!(
-            "[LSMiddleman] Local trying to register received: {}.",
+            "[LSMiddleman] Successfully registered. My new local id: {}.",
             msg.local_id
         );
 
@@ -176,14 +180,17 @@ impl Handler<HandleLocalRegisteredMessage> for LSMiddleman {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-struct HandleLocalLoggedInMessage {}
+struct HandleLocalSuccessfulLogIn {}
 
-impl Handler<HandleLocalLoggedInMessage> for LSMiddleman {
+impl Handler<HandleLocalSuccessfulLogIn> for LSMiddleman {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, _: HandleLocalLoggedInMessage, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _: HandleLocalSuccessfulLogIn, _: &mut Self::Context) -> Self::Result {
+        info!(
+            "[LSMiddleman] Successfully logged in. Sending order results that were pending, if any."
+        );
         self.connection_handler_addr
-            .try_send(connection_handler::TrySendOneOrder {})
+            .try_send(connection_handler::TrySendOrderResults {})
             .map_err(|err| err.to_string())
     }
 }

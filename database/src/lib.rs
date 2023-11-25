@@ -5,6 +5,7 @@ pub mod pending_deliveries;
 
 use actix::{Actor, StreamHandler};
 use pending_deliveries::PendingDeliveries;
+use shared::model::constants::DATABASE_IP;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::{
@@ -35,7 +36,7 @@ pub async fn run() -> Result<(), String> {
     let handler_addr =
         db_handler::DBHandlerActor::new(pending_deliveries.clone(), global_stock.clone()).start();
 
-    let listener = TcpListener::bind("127.0.0.1:9999")
+    let listener = TcpListener::bind(DATABASE_IP)
         .await
         .map_err(|err| err.to_string())?;
 

@@ -17,7 +17,7 @@ use crate::e_commerce::connection_handler::RemoveSLMiddleman;
 
 use super::connection_handler::{
     AskLeaderMessage, ConnectionHandler, LoginLocalMessage, OrderCancelledFromLocal,
-    OrderCompletedFromLocal, RegisterLocalMessage, StockMessage,
+    OrderCompletedFromLocal, RegisterLocal, StockFromLocal,
 };
 
 pub struct SLMiddleman {
@@ -92,7 +92,7 @@ impl Handler<HandleOnlineMsg> for SLMiddleman {
                 .map_err(|err| err.to_string()),
             LSMessage::Stock { stock } => ctx
                 .address()
-                .try_send(HandleStockMessage { stock })
+                .try_send(HandleStockMessageFromLocal { stock })
                 .map_err(|err| err.to_string()),
             LSMessage::RegisterLocalMessage => ctx
                 .address()
@@ -133,16 +133,20 @@ impl Handler<HandleAskLeaderMessage> for SLMiddleman {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-struct HandleStockMessage {
+struct HandleStockMessageFromLocal {
     stock: HashMap<String, Product>,
 }
 
-impl Handler<HandleStockMessage> for SLMiddleman {
+impl Handler<HandleStockMessageFromLocal> for SLMiddleman {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: HandleStockMessage, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        msg: HandleStockMessageFromLocal,
+        ctx: &mut Self::Context,
+    ) -> Self::Result {
         self.connection_handler_addr
-            .try_send(StockMessage {
+            .try_send(StockFromLocal {
                 sl_middleman_addr: ctx.address(),
                 stock: msg.stock,
             })
@@ -160,7 +164,7 @@ impl Handler<HandleRegisterLocalMessage> for SLMiddleman {
 
     fn handle(&mut self, _: HandleRegisterLocalMessage, ctx: &mut Self::Context) -> Self::Result {
         self.connection_handler_addr
-            .try_send(RegisterLocalMessage {
+            .try_send(RegisterLocal {
                 sl_middleman_addr: ctx.address(),
             })
             .map_err(|err| err.to_string())?;
@@ -239,14 +243,14 @@ impl Handler<HandleOrderCancelledMessage> for SLMiddleman {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct SendOnlineMessage {
+pub struct SendOnlineMsg {
     pub msg_to_send: String,
 }
 
-impl Handler<SendOnlineMessage> for SLMiddleman {
+impl Handler<SendOnlineMsg> for SLMiddleman {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: SendOnlineMessage, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: SendOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
         let online_msg = msg.msg_to_send + "\n";
         let writer = self.connected_local_shop_write_stream.clone();
         wrap_future::<_, Self>(async move {
