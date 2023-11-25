@@ -84,15 +84,3 @@ impl Handler<LeaderIsReady> for OrderHandler {
         self.is_leader_ready = true;
     }
 }
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct LeaderIsNotReady {}
-
-impl Handler<LeaderIsNotReady> for OrderHandler {
-    type Result = ();
-
-    fn handle(&mut self, _msg: LeaderIsNotReady, _ctx: &mut Self::Context) -> Self::Result {
-        self.is_leader_ready = false;
-    }
-}

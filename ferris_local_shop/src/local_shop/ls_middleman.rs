@@ -91,10 +91,6 @@ impl Handler<HandleOnlineMsg> for LSMiddleman {
                 .address()
                 .try_send(HandleLeaderMessage { leader_id })
                 .map_err(|err| err.to_string()),
-            SLMessage::DontHaveLeaderYet => ctx
-                .address()
-                .try_send(HandleLeaderNotYetElected {})
-                .map_err(|err| err.to_string()),
             SLMessage::LocalSuccessfullyRegistered { local_id } => ctx
                 .address()
                 .try_send(HandleLocalSuccessfulRegister { local_id })
@@ -128,26 +124,9 @@ impl Handler<HandleLeaderMessage> for LSMiddleman {
         info!("[LSMiddleman] Leader message received: {}.", msg.leader_id);
         self.connection_handler_addr
             .try_send(LeaderMessage {
-                leader_ip: msg.leader_id,
+                leader_id: msg.leader_id,
             })
             .map_err(|err| err.to_string())
-    }
-}
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-struct HandleLeaderNotYetElected {}
-
-impl Handler<HandleLeaderNotYetElected> for LSMiddleman {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, _: HandleLeaderNotYetElected, ctx: &mut Self::Context) -> Self::Result {
-        info!("[LSMiddleman] Leader not yet elected.");
-        self.connection_handler_addr
-            .try_send(connection_handler::LeaderNotYetElected {})
-            .map_err(|err| err.to_string())?;
-        ctx.stop();
-        Ok(())
     }
 }
 

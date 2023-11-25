@@ -19,7 +19,7 @@ use super::sl_middleman::SLMiddleman;
 
 //====================================================================//
 
-pub fn setup_local_shops_connections(
+pub fn setup_sl_connections(
     connection_handler: Addr<ConnectionHandler>,
     locals_listening_port: u16,
     rx_from_input: mpsc::Receiver<String>,
@@ -29,6 +29,9 @@ pub fn setup_local_shops_connections(
             handle_incoming_locals(connection_handler, locals_listening_port, rx_from_input).await
         {
             error!("{}", e);
+            if let Some(system) = System::try_current() {
+                system.stop()
+            }
         };
     })
 }
@@ -38,40 +41,26 @@ async fn handle_incoming_locals(
     locals_listening_port: u16,
     rx_from_input: mpsc::Receiver<String>,
 ) -> Result<(), String> {
-    if let Ok(listener) =
-        AsyncTcpListener::bind(format!("{}:{}", LOCALHOST, locals_listening_port)).await
-    {
-        info!(
-            "Starting listener for Clients in [{}:{}]",
-            LOCALHOST, locals_listening_port
-        );
+    let listener = AsyncTcpListener::bind(format!("{}:{}", LOCALHOST, locals_listening_port))
+        .await
+        .map_err(|err| err.to_string())?;
+    info!(
+        "Starting listener for Clients in [{}:{}]",
+        LOCALHOST, locals_listening_port
+    );
 
-        handle_communication_loop(rx_from_input, listener, connection_handler).await
-    } else {
-        if let Some(system) = System::try_current() {
-            system.stop()
-        }
-        Err("Error binding port: Already in use, restart application".to_string())
-    }
-}
-
-async fn handle_communication_loop(
-    rx_from_input: mpsc::Receiver<String>,
-    listener: AsyncTcpListener,
-    connection_handler: Addr<ConnectionHandler>,
-) -> Result<(), String> {
     loop {
         if let Ok((stream, stream_addr)) = listener.accept().await {
             if is_exit_required(&rx_from_input) {
                 return Ok(());
             }
             info!(" [{:?}] Client connected", stream_addr);
-            handle_connected_local_shop(stream, &connection_handler)?;
+            handle_connected_sl(stream, &connection_handler)?;
         };
     }
 }
 
-fn handle_connected_local_shop(
+fn handle_connected_sl(
     stream: AsyncTcpStream,
     connection_handler: &Addr<ConnectionHandler>,
 ) -> Result<(), String> {

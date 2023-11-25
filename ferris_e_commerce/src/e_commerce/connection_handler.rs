@@ -8,6 +8,7 @@ use shared::model::db_message_body::DatabaseMessageBody;
 use shared::model::db_request::{RequestCategory, RequestType};
 use shared::model::db_response::DatabaseResponse;
 use shared::model::order::Order;
+use shared::model::ss_message::SSMessage;
 use shared::model::{db_request::DatabaseRequest, sl_message::SLMessage, stock_product::Product};
 use tracing::{error, info, warn};
 
@@ -15,6 +16,7 @@ use crate::e_commerce::sl_middleman::{self, SetUpId};
 
 use crate::e_commerce::ss_middleman;
 
+use super::sl_middleman::SendOnlineMsg;
 use super::{
     order_handler::{self, OrderHandler},
     order_worker::OrderWorker,
@@ -37,9 +39,6 @@ pub struct ConnectionHandler {
     ss_communicators: HashMap<u16, Addr<SSMiddleman>>,
 
     order_results_pending_to_redirect: HashMap<u16, Vec<(Order, bool)>>,
-
-    // req_send_to_db: Option<DatabaseRequest>,
-    curr_local_id: u16,
 }
 
 impl ConnectionHandler {
@@ -60,9 +59,6 @@ impl ConnectionHandler {
             ss_communicators: HashMap::new(),
 
             order_results_pending_to_redirect: HashMap::new(),
-
-            // req_send_to_db: None,
-            curr_local_id: 0,
         }
     }
 }
@@ -90,23 +86,17 @@ impl Handler<AskLeaderMessage> for ConnectionHandler {
         info!("[ConnectionHandler] Sending e-commerce leader.");
 
         if let Some(leader_id) = self.leader_sl_id {
-            msg.sl_middleman_addr
+            return msg
+                .sl_middleman_addr
                 .try_send(sl_middleman::SendOnlineMsg {
                     msg_to_send: SLMessage::LeaderMessage { leader_id }
                         .to_string()
                         .map_err(|err| err.to_string())?,
                 })
-                .map_err(|err| err.to_string())?;
-        } else {
-            msg.sl_middleman_addr
-                .try_send(sl_middleman::SendOnlineMsg {
-                    msg_to_send: SLMessage::DontHaveLeaderYet {}.to_string().map_err(
-                        |err: shared::model::sl_message::SLMessageError| err.to_string(),
-                    )?,
-                })
-                .map_err(|err| err.to_string())?;
+                .map_err(|err| err.to_string());
         }
-        Ok(())
+        error!("Leader should be elected.");
+        Err("Leader should be elected.".to_string())
     }
 }
 
@@ -229,13 +219,14 @@ impl Handler<LoginLocalMessage> for ConnectionHandler {
 
     fn handle(&mut self, msg: LoginLocalMessage, _: &mut Self::Context) -> Self::Result {
         info!("[ConnectionHandler] Login new local.");
-        self.sl_communicators
-            .insert(self.curr_local_id, msg.sl_middleman_addr.clone());
-        msg.sl_middleman_addr
-            .try_send(SetUpId {
-                id: self.curr_local_id,
-            })
-            .map_err(|err| err.to_string())
+        // self.sl_communicators
+        //     .insert(self.curr_local_id, msg.sl_middleman_addr.clone());
+        // msg.sl_middleman_addr
+        //     .try_send(SetUpId {
+        //         id: self.curr_local_id,
+        //     })
+        //     .map_err(|err| err.to_string())
+        Ok(())
     }
 }
 
@@ -398,26 +389,8 @@ impl Handler<OrderCancelledFromLocal> for ConnectionHandler {
 }
 
 // ==========================================================================
-
-#[derive(Message)]
-#[rtype(result = "Result<(),String>")]
-pub struct GetMySSidAndSLid {
-    pub sender_addr: Addr<SSMiddleman>,
-}
-
-impl Handler<GetMySSidAndSLid> for ConnectionHandler {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, msg: GetMySSidAndSLid, _ctx: &mut Self::Context) -> Self::Result {
-        msg.sender_addr
-            .try_send(super::ss_middleman::GotMyIds {
-                my_ss_id: self.my_ss_id,
-                my_sl_id: self.my_sl_id,
-            })
-            .map_err(|err| err.to_string())?;
-        Ok(())
-    }
-}
+// SS Messages
+// ==========================================================================
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
@@ -633,32 +606,49 @@ fn send_order_result_to_db(order: Order) -> Result<(), String> {
 //====================================================================//
 
 #[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "()")]
+#[rtype(result = "Result<(), String>")]
 pub struct AddSSMiddlemanAddr {
+    pub ss_id: Option<u16>,
     pub ss_middleman_addr: Addr<SSMiddleman>,
-    pub connected_server_id: u16,
 }
 
 impl Handler<AddSSMiddlemanAddr> for ConnectionHandler {
-    type Result = ();
+    type Result = Result<(), String>;
 
     fn handle(&mut self, msg: AddSSMiddlemanAddr, _ctx: &mut Self::Context) -> Self::Result {
-        self.ss_communicators
-            .insert(msg.connected_server_id, msg.ss_middleman_addr);
+        if let Some(ss_id) = msg.ss_id {
+            self.ss_communicators
+                .insert(ss_id, msg.ss_middleman_addr.clone());
+        }
+
+        msg.ss_middleman_addr
+            .try_send(ss_middleman::SendOnlineMsg {
+                msg_to_send: SSMessage::TakeMyId {
+                    ss_id: self.my_ss_id,
+                    sl_id: self.my_sl_id,
+                }
+                .to_string()
+                .map_err(|err| err.to_string())?,
+            })
+            .map_err(|err| err.to_string())
     }
 }
 
 #[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "()")]
-pub struct AddOrderWorkerAddr {
-    pub order_worker_addr: Addr<OrderWorker>,
+#[rtype(result = "Result<(), String>")]
+pub struct RegisterSSMiddleman {
+    pub ss_id: u16,
+    pub ss_middleman_addr: Addr<SSMiddleman>,
 }
 
-impl Handler<AddOrderWorkerAddr> for ConnectionHandler {
-    type Result = ();
+impl Handler<RegisterSSMiddleman> for ConnectionHandler {
+    type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: AddOrderWorkerAddr, _ctx: &mut Self::Context) -> Self::Result {
-        self.order_workers.push(msg.order_worker_addr);
+    fn handle(&mut self, msg: RegisterSSMiddleman, _ctx: &mut Self::Context) -> Self::Result {
+        info!("Registering new SS.");
+        self.ss_communicators
+            .insert(msg.ss_id, msg.ss_middleman_addr.clone());
+        Ok(())
     }
 }
 
@@ -673,37 +663,35 @@ impl Handler<LeaderElection> for ConnectionHandler {
 
     fn handle(&mut self, _msg: LeaderElection, _ctx: &mut Self::Context) -> Self::Result {
         warn!("LeaderElection message received");
-        if !self.leader_election_running {
-            self.leader_election_running = true;
-            let mut my_id_is_greater = true;
-            for (server_id, ss_middleman) in self.ss_communicators.iter() {
-                if server_id > &self.my_ss_id {
-                    info!("Found a server with a greater id: [{}]", server_id);
-                    my_id_is_greater = false;
-                    ss_middleman
-                        .try_send(ss_middleman::SendElectLeader {
-                            my_ss_id: self.my_ss_id,
-                            my_sl_id: self.my_sl_id,
-                        })
-                        .map_err(|err| err.to_string())?;
-                }
+
+        if let Some(max_ss_id) = self.ss_communicators.keys().max() {
+            if max_ss_id > &self.my_ss_id {
+                let ss_middleman = self.ss_communicators.get(max_ss_id).ok_or(format!(
+                    "No SS middleman found for server with id {}",
+                    max_ss_id
+                ))?;
+                return ss_middleman
+                    .try_send(ss_middleman::SendElectLeader {
+                        my_ss_id: self.my_ss_id,
+                        my_sl_id: self.my_sl_id,
+                    })
+                    .map_err(|err| err.to_string());
             }
-            if my_id_is_greater {
-                info!("I'm the new leader [{}]", self.my_ss_id);
-                for (server_id, ss_middleman) in self.ss_communicators.iter() {
-                    info!("Notifying server {}", server_id);
-                    ss_middleman
-                        .try_send(ss_middleman::SendSelectedLeader {
-                            my_ss_id: self.my_ss_id,
-                            my_sl_id: self.my_sl_id,
-                        })
-                        .map_err(|err| err.to_string())?;
-                }
-                self.leader_ss_id = Some(self.my_ss_id);
-                self.leader_sl_id = Some(self.my_sl_id);
-                self.leader_election_running = false;
-            }
+        };
+
+        info!("I'm the new leader [{}]", self.my_ss_id);
+        for (server_id, ss_middleman) in self.ss_communicators.iter() {
+            info!("Notifying server {}", server_id);
+            ss_middleman
+                .try_send(ss_middleman::SendSelectedLeader {
+                    my_ss_id: self.my_ss_id,
+                    my_sl_id: self.my_sl_id,
+                })
+                .map_err(|err| err.to_string())?;
         }
+        self.leader_ss_id = Some(self.my_ss_id);
+        self.leader_sl_id = Some(self.my_sl_id);
+
         Ok(())
     }
 }
@@ -725,7 +713,79 @@ impl Handler<LeaderSelected> for ConnectionHandler {
         self.order_handler
             .try_send(order_handler::LeaderIsReady {})
             .map_err(|err| err.to_string())?;
+        // TODO: Manejar el input de start desde el ConnectionHandler, con lo cual esto ultimo sobra
         Ok(())
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<(),String>")]
+pub struct CheckIfTheOneWhoClosedWasLeader {
+    pub closed_server_id: u16,
+}
+
+impl Handler<CheckIfTheOneWhoClosedWasLeader> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(
+        &mut self,
+        msg: CheckIfTheOneWhoClosedWasLeader,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        self.ss_communicators
+            .remove(&msg.closed_server_id)
+            .ok_or(format!(
+                "No SS middleman found for server with id {}",
+                msg.closed_server_id
+            ))?;
+        if let Some(leader_id) = self.leader_ss_id {
+            if leader_id != msg.closed_server_id {
+                return Ok(());
+            }
+            self.leader_ss_id = None;
+            self.leader_sl_id = None;
+            if let Some(max_ss_id) = self.ss_communicators.keys().max() {
+                if let Some(min_ss_id) = self.ss_communicators.keys().min() {
+                    if min_ss_id > &self.my_ss_id {
+                        self.ss_communicators
+                            .get(max_ss_id)
+                            .ok_or(format!(
+                                "No SS middleman found for server with id {}",
+                                max_ss_id
+                            ))?
+                            .try_send(ss_middleman::SendOnlineMsg {
+                                msg_to_send: SSMessage::ElectLeader {
+                                    requestor_id: self.my_ss_id,
+                                }
+                                .to_string()
+                                .map_err(|err| err.to_string())?,
+                            })
+                            .map_err(|err| err.to_string())?;
+                    }
+                }
+                return Ok(());
+            };
+            self.leader_ss_id = Some(self.my_ss_id);
+            self.leader_sl_id = Some(self.my_sl_id);
+            info!("I'm the new leader [{}]", self.my_ss_id);
+        }
+        Ok(())
+    }
+}
+
+// ==========================================================================
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "()")]
+pub struct AddOrderWorkerAddr {
+    pub order_worker_addr: Addr<OrderWorker>,
+}
+
+impl Handler<AddOrderWorkerAddr> for ConnectionHandler {
+    type Result = ();
+
+    fn handle(&mut self, msg: AddOrderWorkerAddr, _ctx: &mut Self::Context) -> Self::Result {
+        self.order_workers.push(msg.order_worker_addr);
     }
 }
 
@@ -760,40 +820,5 @@ impl Handler<DelegateOrderToLeader> for ConnectionHandler {
         } else {
             Err("No leader selected yet".to_string())
         }
-    }
-}
-
-#[derive(Message)]
-#[rtype(result = "Result<(),String>")]
-pub struct CheckIfTheOneWhoClosedWasLeader {
-    pub closed_server_id: u16,
-}
-
-impl Handler<CheckIfTheOneWhoClosedWasLeader> for ConnectionHandler {
-    type Result = Result<(), String>;
-
-    fn handle(
-        &mut self,
-        msg: CheckIfTheOneWhoClosedWasLeader,
-        ctx: &mut Self::Context,
-    ) -> Self::Result {
-        if let Some(leader_id) = self.leader_ss_id {
-            if leader_id == msg.closed_server_id {
-                self.leader_ss_id = None;
-                self.order_handler
-                    .try_send(order_handler::LeaderIsNotReady {})
-                    .map_err(|err| err.to_string())?;
-                ctx.address()
-                    .try_send(LeaderElection {})
-                    .map_err(|err| err.to_string())?;
-            }
-            self.ss_communicators
-                .remove(&msg.closed_server_id)
-                .ok_or(format!(
-                    "No SS middleman found for server with id {}",
-                    msg.closed_server_id
-                ))?;
-        }
-        Ok(())
     }
 }

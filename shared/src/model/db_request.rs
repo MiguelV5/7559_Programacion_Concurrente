@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
-use super::db_message_body::DatabaseMessageBody;
+use super::{db_message_body::DatabaseMessageBody, order::Order, stock_product::Product};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct DatabaseRequest {
@@ -36,4 +38,20 @@ pub enum RequestType {
     GetAll,
     Post,
     None,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum DBRequest {
+    GetNewLocalId,
+    PostStockFromLocal {
+        local_id: u16,
+        stock: HashMap<String, Product>,
+    },
+    PostOrderResult {
+        order: Order,
+    },
+    GetProductQuantityByLocalId {
+        local_id: u16,
+        product_name: String,
+    },
 }

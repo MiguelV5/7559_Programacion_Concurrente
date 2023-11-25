@@ -14,11 +14,12 @@ use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::Mutex;
 
 use crate::e_commerce::connection_handler::{
-    AddSSMiddlemanAddr, CheckIfTheOneWhoClosedWasLeader, GetMySSidAndSLid, LeaderElection,
+    AddSSMiddlemanAddr, CheckIfTheOneWhoClosedWasLeader, LeaderElection,
 };
 
 use super::connection_handler::{
     ConnectionHandler, LeaderSelected, OrderCancelledFromLocal, OrderCompletedFromLocal,
+    RegisterSSMiddleman,
 };
 
 pub struct SSMiddleman {
@@ -26,6 +27,20 @@ pub struct SSMiddleman {
     pub connected_server_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
     pub connected_server_ss_id: Option<u16>,
     pub connected_server_sl_id: Option<u16>,
+}
+
+impl SSMiddleman {
+    pub fn new(
+        connection_handler: Addr<ConnectionHandler>,
+        connected_server_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
+    ) -> Self {
+        SSMiddleman {
+            connection_handler,
+            connected_server_write_stream,
+            connected_server_ss_id: None,
+            connected_server_sl_id: None,
+        }
+    }
 }
 
 impl Actor for SSMiddleman {
@@ -72,17 +87,10 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
     fn handle(&mut self, msg: HandleOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
         match SSMessage::from_string(&msg.received_msg).map_err(|err| err.to_string())? {
             SSMessage::ElectLeader { requestor_id: _ } => {
-                let ack = SSMessage::AckElectLeader
-                    .to_string()
-                    .map_err(|err| err.to_string())?;
-                ctx.address()
-                    .try_send(SendOnlineMsg { msg_to_send: ack })
-                    .map_err(|err| err.to_string())?;
                 self.connection_handler
                     .try_send(LeaderElection {})
                     .map_err(|err| err.to_string())?;
             }
-            SSMessage::AckElectLeader => {}
             SSMessage::SelectedLeader {
                 leader_ss_id,
                 leader_sl_id,
@@ -97,9 +105,6 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
             SSMessage::DelegateOrderToLeader { order } => {
                 info!("ORDER DELEGATED: {:?}", order);
             }
-            SSMessage::AckDelegateOrderToLeader { order } => {
-                info!("ORDER DELEGATED ACK: {:?}", order);
-            }
             SSMessage::SolvedPreviouslyDelegatedOrder {
                 order,
                 was_completed,
@@ -112,24 +117,14 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
                     })
                     .map_err(|err| err.to_string())?;
             }
-            SSMessage::GetSSidAndSLid => {
-                self.connection_handler
-                    .try_send(GetMySSidAndSLid {
-                        sender_addr: ctx.address(),
-                    })
-                    .map_err(|err| err.to_string())?;
-            }
-            SSMessage::AckGetSSidAndSLid { ss_id, sl_id } => {
+            SSMessage::TakeMyId { ss_id, sl_id } => {
                 self.connected_server_ss_id = Some(ss_id);
                 self.connected_server_sl_id = Some(sl_id);
                 self.connection_handler
-                    .try_send(AddSSMiddlemanAddr {
+                    .try_send(RegisterSSMiddleman {
+                        ss_id,
                         ss_middleman_addr: ctx.address(),
-                        connected_server_id: ss_id,
                     })
-                    .map_err(|err| err.to_string())?;
-                self.connection_handler
-                    .try_send(LeaderElection {})
                     .map_err(|err| err.to_string())?;
             }
         };
@@ -139,8 +134,8 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-struct SendOnlineMsg {
-    msg_to_send: String,
+pub struct SendOnlineMsg {
+    pub msg_to_send: String,
 }
 
 impl Handler<SendOnlineMsg> for SSMiddleman {
@@ -168,53 +163,6 @@ impl Handler<SendOnlineMsg> for SSMiddleman {
 }
 
 // ================================================================================
-
-#[derive(Message)]
-#[rtype(result = "Result<(),String>")]
-pub struct GoAskForConnectedServerId {}
-
-impl Handler<GoAskForConnectedServerId> for SSMiddleman {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, _msg: GoAskForConnectedServerId, ctx: &mut Self::Context) -> Self::Result {
-        info!("GoAskForConnectedServerId message received");
-        let online_msg = SSMessage::GetSSidAndSLid
-            .to_string()
-            .map_err(|err| err.to_string())?;
-        ctx.address()
-            .try_send(SendOnlineMsg {
-                msg_to_send: online_msg,
-            })
-            .map_err(|err| err.to_string())?;
-        Ok(())
-    }
-}
-
-#[derive(Message)]
-#[rtype(result = "Result<(),String>")]
-pub struct GotMyIds {
-    pub my_ss_id: u16,
-    pub my_sl_id: u16,
-}
-
-impl Handler<GotMyIds> for SSMiddleman {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, msg: GotMyIds, ctx: &mut Self::Context) -> Self::Result {
-        let online_msg = SSMessage::AckGetSSidAndSLid {
-            ss_id: msg.my_ss_id,
-            sl_id: msg.my_sl_id,
-        }
-        .to_string()
-        .map_err(|err| err.to_string())?;
-        ctx.address()
-            .try_send(SendOnlineMsg {
-                msg_to_send: online_msg,
-            })
-            .map_err(|err| err.to_string())?;
-        Ok(())
-    }
-}
 
 #[derive(Message)]
 #[rtype(result = "Result<(),String>")]

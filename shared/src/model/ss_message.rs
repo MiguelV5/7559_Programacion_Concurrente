@@ -18,11 +18,13 @@ impl Error for SSMessageError {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum SSMessage {
-    // General messages
+    TakeMyId {
+        ss_id: u16,
+        sl_id: u16,
+    },
     ElectLeader {
         requestor_id: u16,
     },
-    AckElectLeader,
     SelectedLeader {
         leader_ss_id: u16,
         leader_sl_id: u16,
@@ -30,18 +32,9 @@ pub enum SSMessage {
     DelegateOrderToLeader {
         order: Order,
     },
-    AckDelegateOrderToLeader {
-        order: Order,
-    },
     SolvedPreviouslyDelegatedOrder {
         order: Order,
         was_completed: bool,
-    },
-    // Handshake messages
-    GetSSidAndSLid,
-    AckGetSSidAndSLid {
-        ss_id: u16,
-        sl_id: u16,
     },
 }
 

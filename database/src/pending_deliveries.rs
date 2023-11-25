@@ -3,7 +3,6 @@
 use shared::model::product_to_delivery::OrderToDelivery;
 use std::collections::HashMap;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingDeliveries {
     //deliveries is a hashmap with key: ecommerce_id and value: order
@@ -16,7 +15,6 @@ impl Default for PendingDeliveries {
     }
 }
 
-#[allow(dead_code)]
 impl PendingDeliveries {
     pub fn new() -> Self {
         PendingDeliveries {

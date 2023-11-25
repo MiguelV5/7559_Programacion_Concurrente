@@ -7,7 +7,7 @@ use tokio::sync::mpsc::Sender;
 use tracing::{error, info, warn};
 
 use crate::local_shop::{
-    constants::{LEADER_ADRR, LEADER_NOT_ELECTED, WAKE_UP},
+    constants::{LEADER_ADRR, WAKE_UP},
     ls_middleman::{CloseConnection, SendOnlineMessage},
     stock_handler,
 };
@@ -154,7 +154,7 @@ impl Handler<AddLSMiddleman> for ConnectionHandlerActor {
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(), String>")]
 pub struct LeaderMessage {
-    pub leader_ip: u16,
+    pub leader_id: u16,
 }
 
 impl Handler<LeaderMessage> for ConnectionHandlerActor {
@@ -163,8 +163,8 @@ impl Handler<LeaderMessage> for ConnectionHandlerActor {
     fn handle(&mut self, msg: LeaderMessage, _: &mut Context<Self>) -> Self::Result {
         info!("[ConnectionHandler] Checking e-commerce leader address.");
 
-        if let Some(curr_e_commerce_id) = &self.curr_e_commerce_addr {
-            if curr_e_commerce_id == &msg.leader_ip {
+        if let Some(curr_e_commerce_id) = &mut self.curr_e_commerce_addr {
+            if curr_e_commerce_id == &msg.leader_id {
                 match self.local_id {
                     Some(local_id) => {
                         info!("[ConnectionHandler] Asking for logging in local with e-commerce.");
@@ -194,29 +194,12 @@ impl Handler<LeaderMessage> for ConnectionHandlerActor {
                     }
                 }
             }
+            *curr_e_commerce_id = msg.leader_id;
             if let Some(tx_close_connection) = &self.tx_close_connection {
                 tx_close_connection
                     .try_send(LEADER_ADRR.to_string())
                     .map_err(|err| err.to_string())?;
             }
-        }
-        Ok(())
-    }
-}
-
-#[derive(Message, Debug)]
-#[rtype(result = "Result<(), String>")]
-pub struct LeaderNotYetElected {}
-
-impl Handler<LeaderNotYetElected> for ConnectionHandlerActor {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, _: LeaderNotYetElected, _: &mut Context<Self>) -> Self::Result {
-        info!("[ConnectionHandler] Leader not yet elected.");
-        if let Some(tx_close_connection) = &self.tx_close_connection {
-            tx_close_connection
-                .try_send(LEADER_NOT_ELECTED.to_string())
-                .map_err(|err| err.to_string())?;
         }
         Ok(())
     }

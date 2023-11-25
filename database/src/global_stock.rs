@@ -17,7 +17,6 @@ impl Default for GlobalStock {
     }
 }
 
-#[allow(dead_code)]
 impl GlobalStock {
     pub fn new() -> Self {
         GlobalStock {

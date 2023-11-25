@@ -59,7 +59,7 @@ async fn start_async(
         .send(order_handler.clone())
         .map_err(|_| "Error sending order handler")?;
 
-    let locals_handle = sl_communicator::setup_local_shops_connections(
+    let locals_handle = sl_communicator::setup_sl_connections(
         connection_handler.clone(),
         locals_listening_port,
         rx_from_input_to_sl,
@@ -68,7 +68,7 @@ async fn start_async(
         .send(tx_from_input_to_sl)
         .map_err(|_| "Error sending tx_to_sl")?;
 
-    let servers_handle = ss_communicator::setup_servers_connections(
+    let servers_handle = ss_communicator::setup_ss_connections(
         connection_handler.clone(),
         servers_listening_port,
         locals_listening_port,

@@ -24,28 +24,29 @@ use crate::e_commerce::connection_handler::LeaderElection;
 use crate::e_commerce::ss_middleman::SSMiddleman;
 
 use super::connection_handler::ConnectionHandler;
-use super::ss_middleman::GoAskForConnectedServerId;
 
 // ====================================================================
 
-pub fn setup_servers_connections(
+pub fn setup_ss_connections(
     connection_handler: Addr<ConnectionHandler>,
     servers_listening_port: u16,
     locals_listening_port: u16,
     rx_from_input: mpsc::Receiver<String>,
-) -> JoinHandle<()> {
+) -> JoinHandle<Result<(), String>> {
     actix::spawn(async move {
-        if let Err(e) =
-            try_connect_to_servers(connection_handler.clone(), locals_listening_port).await
-        {
-            warn!("{}", e);
-            connection_handler.do_send(LeaderElection {});
-        }
+        try_connect_to_servers(connection_handler.clone(), locals_listening_port).await?;
+        connection_handler
+            .try_send(LeaderElection {})
+            .map_err(|err| err.to_string())?;
         if let Err(e) =
             handle_incoming_servers(connection_handler, servers_listening_port, rx_from_input).await
         {
             error!("Error handling incoming servers: {}", e);
+            if let Some(system) = System::try_current() {
+                system.stop();
+            }
         }
+        Ok(())
     })
 }
 
@@ -54,44 +55,27 @@ async fn try_connect_to_servers(
     locals_listening_port: u16,
 ) -> Result<(), String> {
     let mut current_port = SS_INITIAL_PORT;
-    let mut could_connect_any = false;
     while current_port <= SS_MAX_PORT {
         let addr = format!("{}:{}", LOCALHOST, current_port);
 
         if let Ok(stream) = AsyncTcpStream::connect(addr.clone()).await {
-            could_connect_any = true;
             info!("Connected to server at {}", addr);
             let (reader, writer) = split(stream);
             let ss_middleman = SSMiddleman::create(|ctx| {
                 ctx.add_stream(LinesStream::new(BufReader::new(reader).lines()));
-                SSMiddleman {
-                    connection_handler: connection_handler.clone(),
-                    connected_server_write_stream: Arc::new(Mutex::new(writer)),
-                    connected_server_ss_id: Some(current_port),
-                    connected_server_sl_id: Some(locals_listening_port),
-                }
+                SSMiddleman::new(connection_handler.clone(), Arc::new(Mutex::new(writer)))
             });
-            match connection_handler.try_send(AddSSMiddlemanAddr {
-                ss_middleman_addr: ss_middleman,
-                connected_server_id: current_port,
-            }) {
-                Ok(_) => {}
-                Err(_) => {
-                    error!("Error sending AddSSMiddlemanAddr to ConnectionHandler");
-                    if let Some(system) = System::try_current() {
-                        system.stop();
-                    }
-                }
-            };
+            connection_handler
+                .try_send(AddSSMiddlemanAddr {
+                    ss_id: Some(current_port),
+                    ss_middleman_addr: ss_middleman,
+                })
+                .map_err(|err| err.to_string())?;
         }
         current_port += 1;
     }
 
-    if could_connect_any {
-        Ok(())
-    } else {
-        Err("Couldn't connect to any server".into())
-    }
+    Ok(())
 }
 
 async fn handle_incoming_servers(
@@ -107,7 +91,15 @@ async fn handle_incoming_servers(
             LOCALHOST, servers_listening_port
         );
 
-        handle_communication_loop(rx_from_input, listener, connection_handler).await
+        loop {
+            if let Ok((stream, stream_addr)) = listener.accept().await {
+                if is_exit_required(&rx_from_input) {
+                    return Ok(());
+                }
+                info!(" [{:?}] Server connected", stream_addr);
+                handle_connected_ss(stream, &connection_handler)?;
+            };
+        }
     } else {
         if let Some(system) = System::try_current() {
             system.stop()
@@ -116,45 +108,21 @@ async fn handle_incoming_servers(
     }
 }
 
-async fn handle_communication_loop(
-    rx_from_input: mpsc::Receiver<String>,
-    listener: AsyncTcpListener,
-    connection_handler: Addr<ConnectionHandler>,
-) -> Result<(), String> {
-    loop {
-        if let Ok((stream, stream_addr)) = listener.accept().await {
-            if is_exit_required(&rx_from_input) {
-                return Ok(());
-            }
-            info!(" [{:?}] Server connected", stream_addr);
-            handle_server_connected_to_me(stream, &connection_handler);
-        };
-    }
-}
-
-fn handle_server_connected_to_me(
+fn handle_connected_ss(
     async_stream: AsyncTcpStream,
     connection_handler: &Addr<ConnectionHandler>,
-) {
+) -> Result<(), String> {
     let (reader, writer) = split(async_stream);
     let ss_middleman = SSMiddleman::create(|ctx| {
         ctx.add_stream(LinesStream::new(BufReader::new(reader).lines()));
-        SSMiddleman {
-            connection_handler: connection_handler.clone(),
-            connected_server_write_stream: Arc::new(Mutex::new(writer)),
-            connected_server_ss_id: None,
-            connected_server_sl_id: None,
-        }
+        SSMiddleman::new(connection_handler.clone(), Arc::new(Mutex::new(writer)))
     });
-    match ss_middleman.try_send(GoAskForConnectedServerId {}) {
-        Ok(_) => {}
-        Err(_) => {
-            error!("Error sending GoAskForConnectedServerId to recently created SSMiddleman");
-            if let Some(system) = System::try_current() {
-                system.stop();
-            }
-        }
-    };
+    connection_handler
+        .try_send(AddSSMiddlemanAddr {
+            ss_id: None,
+            ss_middleman_addr: ss_middleman,
+        })
+        .map_err(|err| err.to_string())
 }
 
 fn is_exit_required(rx_from_input: &mpsc::Receiver<String>) -> bool {
