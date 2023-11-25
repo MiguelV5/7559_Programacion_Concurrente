@@ -145,13 +145,20 @@ impl Handler<HandleStockMessageFromLocal> for SLMiddleman {
         msg: HandleStockMessageFromLocal,
         ctx: &mut Self::Context,
     ) -> Self::Result {
-        self.connection_handler_addr
-            .try_send(StockFromLocal {
-                sl_middleman_addr: ctx.address(),
-                stock: msg.stock,
-            })
-            .map_err(|err| err.to_string())?;
-        Ok(())
+        if let Some(id) = self.id {
+            self.connection_handler_addr
+                .try_send(StockFromLocal {
+                    sl_middleman_addr: ctx.address(),
+                    local_id: id,
+                    stock: msg.stock,
+                })
+                .map_err(|err| err.to_string())?;
+            Ok(())
+        } else {
+            error!("[SLMiddleman] Received stock from unknown local. It should be registered.");
+            ctx.stop();
+            Ok(())
+        }
     }
 }
 

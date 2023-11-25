@@ -259,6 +259,7 @@ impl Handler<RemoveSLMiddleman> for ConnectionHandler {
 #[rtype(result = "Result<(), String>")]
 pub struct StockFromLocal {
     pub sl_middleman_addr: Addr<SLMiddleman>,
+    pub local_id: u16,
     pub stock: HashMap<String, Product>,
 }
 
@@ -266,11 +267,52 @@ impl Handler<StockFromLocal> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: StockFromLocal, _: &mut Self::Context) -> Self::Result {
-        info!("[ConnectionHandler] Received all stock from a local");
+        info!("[ConnectionHandler] Received all stock from a local.");
+        match post_a_locals_stock_to_db(msg.local_id, msg.stock) {
+            Ok(()) => {
+                info!(
+                    "[ConnectionHandler] Sent stock of local: [{}] to DataBase.",
+                    msg.local_id
+                );
+                Ok(())
+            }
+            Err(e) => {
+                error!(
+                    "[ConnectionHandler] Error sending stock of local: [{}] to DataBase.",
+                    msg.local_id
+                );
+                Err(e)
+            }
+        }
     }
 }
 
-fn post_a_locals_stock_to_db() {}
+fn post_a_locals_stock_to_db(local_id: u16, stock: HashMap<String, Product>) -> Result<(), String> {
+    let request = DatabaseRequest::new(
+        RequestCategory::ProductStock,
+        RequestType::Post,
+        DatabaseMessageBody::GlobalStock(local_id, stock),
+    );
+
+    let mut stream = TcpStream::connect(DATABASE_IP).map_err(|err| err.to_string())?;
+    let mut reader = BufReader::new(stream.try_clone().map_err(|err| err.to_string())?);
+
+    let request_str = serde_json::to_string(&request).map_err(|err| err.to_string())? + "\n";
+
+    stream
+        .write_all(request_str.as_bytes())
+        .map_err(|err| err.to_string())?;
+
+    let mut line: String = String::new();
+    reader.read_line(&mut line).map_err(|err| err.to_string())?;
+    let response =
+        serde_json::from_str::<DatabaseResponse>(&line).map_err(|err| err.to_string())?;
+    if response.response_status.is_ok() {
+        Ok(())
+    } else {
+        Err("Error sending stock to database".to_string())
+    }
+}
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
@@ -422,7 +464,7 @@ impl Handler<SendOrderResultToOtherServer> for ConnectionHandler {
     ) -> Self::Result {
         if let Ok(dest_server_id) = msg.order.get_ss_id_web().ok_or("No ss_id") {
             if let Some(ss_middleman) = self.ss_communicators.get(&dest_server_id) {
-                match ss_middleman.try_send(ss_middleman::RedirectedOrderResult {
+                match ss_middleman.try_send(ss_middleman::SendRedirectedOrderResult {
                     order: msg.order.clone(),
                     was_completed: msg.was_completed,
                 }) {
@@ -507,7 +549,7 @@ impl Handler<TrySendPendingOrderResultsToOtherServer> for ConnectionHandler {
             if let Some((order, was_finished)) = pending_order_results.pop() {
                 match msg
                     .ss_middleman_addr
-                    .try_send(ss_middleman::RedirectedOrderResult {
+                    .try_send(ss_middleman::SendRedirectedOrderResult {
                         order: order.clone(),
                         was_completed: was_finished,
                     }) {
@@ -577,7 +619,6 @@ fn send_order_result_to_db(order: Order) -> Result<(), String> {
     stream
         .write_all(request_str.as_bytes())
         .map_err(|err| err.to_string())?;
-    stream.write_all(b"\n").map_err(|err| err.to_string())?;
     let mut line: String = String::new();
     reader.read_line(&mut line).map_err(|err| err.to_string())?;
     let response =

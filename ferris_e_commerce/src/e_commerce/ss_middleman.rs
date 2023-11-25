@@ -17,7 +17,9 @@ use crate::e_commerce::connection_handler::{
     AddSSMiddlemanAddr, CheckIfTheOneWhoClosedWasLeader, GetMySSidAndSLid, LeaderElection,
 };
 
-use super::connection_handler::{ConnectionHandler, LeaderSelected};
+use super::connection_handler::{
+    ConnectionHandler, LeaderSelected, OrderCancelledFromLocal, OrderCompletedFromLocal,
+};
 
 pub struct SSMiddleman {
     pub connection_handler: Addr<ConnectionHandler>,
@@ -102,7 +104,13 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
                 order,
                 was_completed,
             } => {
-                info!("ORDER SOLVED: {:?}", order);
+                info!("REDIRECTED ORDER SOLVED: {:?}", order);
+                ctx.address()
+                    .try_send(HandleSolvedOrder {
+                        order,
+                        was_completed,
+                    })
+                    .map_err(|err| err.to_string())?;
             }
             SSMessage::GetSSidAndSLid => {
                 self.connection_handler
@@ -283,15 +291,15 @@ impl Handler<SendDelegateOrderToLeader> for SSMiddleman {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct RedirectedOrderResult {
+pub struct SendRedirectedOrderResult {
     pub order: Order,
     pub was_completed: bool,
 }
 
-impl Handler<RedirectedOrderResult> for SSMiddleman {
+impl Handler<SendRedirectedOrderResult> for SSMiddleman {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: RedirectedOrderResult, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: SendRedirectedOrderResult, ctx: &mut Self::Context) -> Self::Result {
         let order_result = SSMessage::SolvedPreviouslyDelegatedOrder {
             order: msg.order,
             was_completed: msg.was_completed,
@@ -304,5 +312,29 @@ impl Handler<RedirectedOrderResult> for SSMiddleman {
                 msg_to_send: order_result,
             })
             .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct HandleSolvedOrder {
+    pub order: Order,
+    pub was_completed: bool,
+}
+
+impl Handler<HandleSolvedOrder> for SSMiddleman {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: HandleSolvedOrder, _ctx: &mut Self::Context) -> Self::Result {
+        if msg.was_completed {
+            self.connection_handler
+                .try_send(OrderCompletedFromLocal { order: msg.order })
+                .map_err(|err| err.to_string())?;
+        } else {
+            self.connection_handler
+                .try_send(OrderCancelledFromLocal { order: msg.order })
+                .map_err(|err| err.to_string())?;
+        }
+        Ok(())
     }
 }
