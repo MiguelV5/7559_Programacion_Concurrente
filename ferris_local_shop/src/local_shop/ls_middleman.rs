@@ -4,8 +4,8 @@ use actix::{
     dev::ContextFutureSpawner, fut::wrap_future, Actor, Context, Handler, Message, StreamHandler,
 };
 use actix::{ActorContext, Addr, AsyncContext};
+use shared::communication::sl_message::SLMessage;
 use shared::model::order::Order;
-use shared::model::sl_message::SLMessage;
 use tracing::{error, info, trace};
 
 use tokio::io::AsyncWriteExt;

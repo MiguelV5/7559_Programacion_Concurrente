@@ -4,8 +4,8 @@ use actix::{
     dev::ContextFutureSpawner, fut::wrap_future, Actor, Context, Handler, Message, StreamHandler,
 };
 use actix::{ActorContext, Addr, AsyncContext};
+use shared::communication::ss_message::SSMessage;
 use shared::model::order::Order;
-use shared::model::ss_message::SSMessage;
 use tracing::{error, info, trace};
 
 use tokio::io::AsyncWriteExt;
@@ -13,9 +13,7 @@ use tokio::io::WriteHalf;
 use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::Mutex;
 
-use crate::e_commerce::connection_handler::{
-    AddSSMiddlemanAddr, CheckIfTheOneWhoClosedWasLeader, LeaderElection,
-};
+use crate::e_commerce::connection_handler::{CheckIfTheOneWhoClosedWasLeader, LeaderElection};
 
 use super::connection_handler::{
     ConnectionHandler, LeaderSelected, OrderCancelledFromLocal, OrderCompletedFromLocal,

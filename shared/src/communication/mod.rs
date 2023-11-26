@@ -1,3 +1,5 @@
-pub mod database_messages;
-pub mod e_commerce_messages;
-pub mod local_messages;
+pub mod db_request;
+pub mod db_response;
+pub mod ls_message;
+pub mod sl_message;
+pub mod ss_message;

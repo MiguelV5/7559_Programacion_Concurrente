@@ -5,13 +5,13 @@ use actix::{
     dev::ContextFutureSpawner, fut::wrap_future, Actor, ActorContext, Context, StreamHandler,
 };
 use actix::{Addr, AsyncContext, Handler, Message};
-use shared::model::ls_message::LSMessage;
+use shared::communication::ls_message::LSMessage;
 use shared::model::order::Order;
 use shared::model::stock_product::Product;
 use tokio::io::{AsyncWriteExt, WriteHalf};
 use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace};
 
 use crate::e_commerce::connection_handler::RemoveSLMiddleman;
 
@@ -194,8 +194,7 @@ impl Handler<HandleLoginLocalMessage> for SLMiddleman {
                 sl_middleman_addr: ctx.address(),
                 local_id: msg.local_id,
             })
-            .map_err(|err| err.to_string())?;
-        Ok(())
+            .map_err(|err| err.to_string())
     }
 }
 

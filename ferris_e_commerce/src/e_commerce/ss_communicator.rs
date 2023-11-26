@@ -9,7 +9,7 @@ use shared::model::constants::SS_INITIAL_PORT;
 use shared::model::constants::SS_MAX_PORT;
 use shared::port_binder::listener_binder::LOCALHOST;
 use tokio::task::JoinHandle;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use actix_rt::System;
 use tokio::io::split;
@@ -30,11 +30,10 @@ use super::connection_handler::ConnectionHandler;
 pub fn setup_ss_connections(
     connection_handler: Addr<ConnectionHandler>,
     servers_listening_port: u16,
-    locals_listening_port: u16,
     rx_from_input: mpsc::Receiver<String>,
 ) -> JoinHandle<Result<(), String>> {
     actix::spawn(async move {
-        try_connect_to_servers(connection_handler.clone(), locals_listening_port).await?;
+        try_connect_to_servers(connection_handler.clone()).await?;
         connection_handler
             .try_send(LeaderElection {})
             .map_err(|err| err.to_string())?;
@@ -50,10 +49,7 @@ pub fn setup_ss_connections(
     })
 }
 
-async fn try_connect_to_servers(
-    connection_handler: Addr<ConnectionHandler>,
-    locals_listening_port: u16,
-) -> Result<(), String> {
+async fn try_connect_to_servers(connection_handler: Addr<ConnectionHandler>) -> Result<(), String> {
     let mut current_port = SS_INITIAL_PORT;
     while current_port <= SS_MAX_PORT {
         let addr = format!("{}:{}", LOCALHOST, current_port);

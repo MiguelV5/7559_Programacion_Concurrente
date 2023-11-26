@@ -8,12 +8,12 @@ use shared::model::{
 use crate::{
     db_communicator::{DBServer, HandleResponse},
     global_stock::GlobalStock,
-    pending_deliveries::PendingDeliveries,
+    pending_order_results::OrderResultsPendingToReport,
 };
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct DBHandlerActor {
-    pub pending_deliveries: PendingDeliveries,
+    pub pending_deliveries: OrderResultsPendingToReport,
     pub global_stock: GlobalStock,
     pub last_local_id: u16,
 }
@@ -23,7 +23,7 @@ impl Actor for DBHandlerActor {
 }
 
 impl DBHandlerActor {
-    pub fn new(pending_deliveries: PendingDeliveries, global_stock: GlobalStock) -> Self {
+    pub fn new(pending_deliveries: OrderResultsPendingToReport, global_stock: GlobalStock) -> Self {
         DBHandlerActor {
             pending_deliveries,
             global_stock,
@@ -58,7 +58,7 @@ impl DBHandlerActor {
                         request.body
                     {
                         self.pending_deliveries
-                            .add_deliveries(products_to_delivery.clone());
+                            .add_order_results(products_to_delivery.clone());
                         DatabaseResponse::new(
                             ResponseStatus::Ok,
                             DatabaseMessageBody::ProductsToDelivery(products_to_delivery),
@@ -144,6 +144,34 @@ impl DBHandlerActor {
                     ResponseStatus::Ok,
                     DatabaseMessageBody::LocalId(self.get_new_local_id()),
                 ),
+                RequestType::None | RequestType::Post | RequestType::GetAll => {
+                    DatabaseResponse::new(
+                        ResponseStatus::Error("Bad Request".to_string()),
+                        DatabaseMessageBody::None,
+                    )
+                }
+            },
+            RequestCategory::CheckLocalId => match request.request_type {
+                RequestType::GetOne => {
+                    if let DatabaseMessageBody::LocalId(local_id) = request.body {
+                        if self.global_stock.check_local_id_exists(local_id) {
+                            DatabaseResponse::new(
+                                ResponseStatus::Ok,
+                                DatabaseMessageBody::LocalId(local_id),
+                            )
+                        } else {
+                            DatabaseResponse::new(
+                                ResponseStatus::Error("Not found local_id".to_string()),
+                                DatabaseMessageBody::None,
+                            )
+                        }
+                    } else {
+                        DatabaseResponse::new(
+                            ResponseStatus::Error("Bad Request".to_string()),
+                            DatabaseMessageBody::None,
+                        )
+                    }
+                }
                 RequestType::None | RequestType::Post | RequestType::GetAll => {
                     DatabaseResponse::new(
                         ResponseStatus::Error("Bad Request".to_string()),

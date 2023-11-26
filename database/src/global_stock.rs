@@ -24,6 +24,10 @@ impl GlobalStock {
         }
     }
 
+    pub fn check_local_id_exists(&self, local_id: u16) -> bool {
+        self.global_stock.contains_key(&local_id)
+    }
+
     pub fn add_local_shop_stock(
         &mut self,
         local_shop_id: u16,

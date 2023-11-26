@@ -1,10 +1,10 @@
 pub mod db_communicator;
 pub mod db_handler;
 pub mod global_stock;
-pub mod pending_deliveries;
+pub mod pending_order_results;
 
 use actix::{Actor, StreamHandler};
-use pending_deliveries::PendingDeliveries;
+use pending_order_results::OrderResultsPendingToReport;
 use shared::model::constants::DATABASE_IP;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -30,7 +30,7 @@ pub async fn run() -> Result<(), String> {
     init_logger();
     info!("Starting database server...");
 
-    let pending_deliveries = PendingDeliveries::new();
+    let pending_deliveries = OrderResultsPendingToReport::new();
     let global_stock = global_stock::GlobalStock::new();
 
     let handler_addr =

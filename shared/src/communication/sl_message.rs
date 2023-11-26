@@ -2,7 +2,7 @@ use std::{error::Error, fmt};
 
 use serde::{Deserialize, Serialize};
 
-use super::order::Order;
+use crate::model::order::Order;
 
 #[derive(Debug)]
 pub enum SLMessageError {

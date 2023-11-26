@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
 use actix_rt::System;
-use shared::model::{ls_message::LSMessage, order::Order, stock_product::Product};
+use shared::communication::ls_message::LSMessage;
+use shared::model::{order::Order, stock_product::Product};
 use tokio::sync::mpsc::Sender;
 use tracing::{error, info, warn};
 
@@ -53,6 +54,14 @@ impl ConnectionHandlerActor {
 impl Actor for ConnectionHandlerActor {
     type Context = Context<Self>;
 }
+
+// ==========================================================================
+// ==========================================================================
+// ==========================================================================
+// Setup
+// ==========================================================================
+// ==========================================================================
+// ==========================================================================
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
@@ -153,6 +162,32 @@ impl Handler<AddLSMiddleman> for ConnectionHandlerActor {
 
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(), String>")]
+pub struct RemoveLSMiddleman {}
+
+impl Handler<RemoveLSMiddleman> for ConnectionHandlerActor {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: RemoveLSMiddleman, ctx: &mut Context<Self>) -> Self::Result {
+        info!("[ConnectionHandler] Removing LsMiddleman.");
+        self.ls_middleman = None;
+        self.curr_e_commerce_addr = None;
+        ctx.address()
+            .try_send(WakeUpConnection {})
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    }
+}
+
+// ==========================================================================
+// ==========================================================================
+// ==========================================================================
+// Handshake
+// ==========================================================================
+// ==========================================================================
+// ==========================================================================
+
+#[derive(Message, Debug)]
+#[rtype(result = "Result<(), String>")]
 pub struct LeaderMessage {
     pub leader_id: u16,
 }
@@ -223,23 +258,13 @@ impl Handler<LocalRegistered> for ConnectionHandlerActor {
     }
 }
 
-#[derive(Message, Debug)]
-#[rtype(result = "Result<(), String>")]
-pub struct RemoveLSMiddleman {}
-
-impl Handler<RemoveLSMiddleman> for ConnectionHandlerActor {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, _: RemoveLSMiddleman, ctx: &mut Context<Self>) -> Self::Result {
-        info!("[ConnectionHandler] Removing LsMiddleman.");
-        self.ls_middleman = None;
-        self.curr_e_commerce_addr = None;
-        ctx.address()
-            .try_send(WakeUpConnection {})
-            .map_err(|err| err.to_string())?;
-        Ok(())
-    }
-}
+// ==========================================================================
+// ==========================================================================
+// ==========================================================================
+// Connection
+// ==========================================================================
+// ==========================================================================
+// ==========================================================================
 
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(), String>")]
@@ -287,6 +312,14 @@ impl Handler<WakeUpConnection> for ConnectionHandlerActor {
     }
 }
 
+// ==========================================================================
+// ==========================================================================
+// ==========================================================================
+// Stock
+// ==========================================================================
+// ==========================================================================
+// ==========================================================================
+
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(), String>")]
 pub struct AskAllStockMessage {}
@@ -330,6 +363,14 @@ impl Handler<ResponseAllStockMessage> for ConnectionHandlerActor {
         Ok(())
     }
 }
+
+// ==========================================================================
+// ==========================================================================
+// ==========================================================================
+// Orders
+// ==========================================================================
+// ==========================================================================
+// ==========================================================================
 
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(), String>")]

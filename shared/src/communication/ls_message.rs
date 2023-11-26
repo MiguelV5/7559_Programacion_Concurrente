@@ -2,7 +2,7 @@ use std::{collections::HashMap, error::Error, fmt};
 
 use serde::{Deserialize, Serialize};
 
-use super::{order::Order, stock_product::Product};
+use crate::model::{order::Order, stock_product::Product};
 
 #[derive(Debug)]
 pub enum LSMessageError {

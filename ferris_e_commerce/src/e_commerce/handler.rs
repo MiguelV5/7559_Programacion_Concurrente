@@ -1,6 +1,6 @@
 use super::connection_handler::{self, ConnectionHandler};
-use super::order_handler;
 use super::order_worker::OrderWorker;
+use super::{db_communicator, db_middleman, order_handler};
 use super::{input_handler, order_handler::OrderHandler, sl_communicator, ss_communicator};
 use actix::prelude::*;
 use shared::{model::order::Order, parsers::orders_parser::OrdersParser};
@@ -71,16 +71,15 @@ async fn start_async(
     let servers_handle = ss_communicator::setup_ss_connections(
         connection_handler.clone(),
         servers_listening_port,
-        locals_listening_port,
         rx_from_input_to_ss,
     );
     sender_tx_to_ss
         .send(tx_from_input_to_ss)
         .map_err(|_| "Error sending tx_to_ss")?;
 
-    let (res1, res2) = join!(locals_handle, servers_handle);
-    res1.map_err(|_| "Error joining locals_handle")?;
-    res2.map_err(|_| "Error joining servers_handle")?;
+    let (res_local_setup, res_sv_setup) = join!(locals_handle, servers_handle);
+    res_local_setup.map_err(|_| "Error joining locals_handle")?;
+    res_sv_setup.map_err(|_| "Error joining servers_handle")??;
 
     Ok(())
 }
@@ -92,7 +91,14 @@ async fn start_actors(
 ) -> Result<(Addr<OrderHandler>, Addr<ConnectionHandler>), Box<dyn Error>> {
     let order_handler = OrderHandler::new(&orders).start();
 
-    let connection_handler = ConnectionHandler::new(order_handler.clone(), ss_id, sl_id).start();
+    let db_middleman = db_communicator::setup_db_connection().await?;
+    let connection_handler =
+        ConnectionHandler::new(order_handler.clone(), db_middleman.clone(), ss_id, sl_id).start();
+    db_middleman
+        .send(db_middleman::AddConnectionHandlerAddr {
+            connection_handler: connection_handler.clone(),
+        })
+        .await?;
 
     let order_worker = OrderWorker::new(1, connection_handler.clone()).start();
     // OrderWorker::new(1, order_handler.clone(), connection_handler.clone()).start();
