@@ -151,6 +151,7 @@ impl Handler<RegisterSSMiddleman> for ConnectionHandler {
         info!("Registering new SS.");
         self.ss_communicators
             .insert(msg.ss_id, msg.ss_middleman_addr.clone());
+        // TODO: Enviar todas las order results pendientes a este nuevo SS
         Ok(())
     }
 }
@@ -158,7 +159,7 @@ impl Handler<RegisterSSMiddleman> for ConnectionHandler {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 pub struct AddSLMiddleman {
-    sl_id: u16,
+    local_id: u16,
     sl_middleman_addr: Addr<SLMiddleman>,
 }
 
@@ -166,12 +167,14 @@ impl Handler<AddSLMiddleman> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: AddSLMiddleman, _: &mut Self::Context) -> Self::Result {
-        info!("[ConnectionHandler] Removing middleman.");
+        info!("[ConnectionHandler] Adding middleman.");
         self.sl_communicators
-            .insert(msg.sl_id, msg.sl_middleman_addr.clone());
+            .insert(msg.local_id, msg.sl_middleman_addr.clone());
 
         msg.sl_middleman_addr
-            .try_send(SetUpId { sl_id: msg.sl_id })
+            .try_send(SetUpId {
+                local_id: msg.local_id,
+            })
             .map_err(|err| err.to_string())?;
         Ok(())
     }
@@ -180,7 +183,7 @@ impl Handler<AddSLMiddleman> for ConnectionHandler {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 pub struct RemoveSLMiddleman {
-    pub sl_id: u16,
+    pub local_id: u16,
 }
 
 impl Handler<RemoveSLMiddleman> for ConnectionHandler {
@@ -188,7 +191,7 @@ impl Handler<RemoveSLMiddleman> for ConnectionHandler {
 
     fn handle(&mut self, msg: RemoveSLMiddleman, _: &mut Self::Context) -> Self::Result {
         info!("[ConnectionHandler] Removing middleman.");
-        self.sl_communicators.remove(&msg.sl_id);
+        self.sl_communicators.remove(&msg.local_id);
         Ok(())
     }
 }
@@ -284,7 +287,7 @@ impl Handler<ResponseGetNewLocalId> for ConnectionHandler {
 
         ctx.address()
             .try_send(AddSLMiddleman {
-                sl_id: msg.db_response_id,
+                local_id: msg.db_response_id,
                 sl_middleman_addr: msg.sl_middleman_addr.clone(),
             })
             .map_err(|err| err.to_string())?;
@@ -352,14 +355,11 @@ impl Handler<LoginLocalMessage> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: LoginLocalMessage, ctx: &mut Self::Context) -> Self::Result {
-        info!(
-            "[ConnectionHandler] Local [{}] trying to log in. Asking DB.",
-            msg.local_id
-        );
+        info!("[ConnectionHandler] Local [{}] logged in.", msg.local_id);
 
         ctx.address()
             .try_send(AddSLMiddleman {
-                sl_id: msg.local_id,
+                local_id: msg.local_id,
                 sl_middleman_addr: msg.sl_middleman_addr.clone(),
             })
             .map_err(|err| err.to_string())?;
@@ -711,6 +711,12 @@ impl Handler<LeaderSelected> for ConnectionHandler {
             .try_send(order_handler::LeaderIsReady {})
             .map_err(|err| err.to_string())?;
         // TODO: Manejar el input de start desde el ConnectionHandler, con lo cual esto ultimo sobra
+
+        for sl_middleman in self.sl_communicators.values() {
+            sl_middleman
+                .try_send(sl_middleman::CloseConnection {})
+                .map_err(|err| err.to_string())?;
+        }
         Ok(())
     }
 }

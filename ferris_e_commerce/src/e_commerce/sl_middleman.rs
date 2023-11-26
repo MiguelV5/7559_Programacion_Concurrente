@@ -21,9 +21,9 @@ use super::connection_handler::{
 };
 
 pub struct SLMiddleman {
-    pub sl_id: Option<u16>,
+    pub local_id: Option<u16>,
     pub connected_local_shop_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
-    connection_handler_addr: Addr<ConnectionHandler>,
+    pub connection_handler_addr: Addr<ConnectionHandler>,
 }
 
 impl SLMiddleman {
@@ -32,7 +32,7 @@ impl SLMiddleman {
         connection_handler_addr: Addr<ConnectionHandler>,
     ) -> Self {
         Self {
-            sl_id: None,
+            local_id: None,
             connected_local_shop_write_stream,
             connection_handler_addr,
         }
@@ -41,6 +41,33 @@ impl SLMiddleman {
 
 impl Actor for SLMiddleman {
     type Context = Context<Self>;
+}
+
+//=============================================================================//
+//============================= Setup =============================//
+//=============================================================================//
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "()")]
+pub struct CloseConnection;
+
+impl Handler<CloseConnection> for SLMiddleman {
+    type Result = ();
+
+    fn handle(&mut self, _: CloseConnection, ctx: &mut Self::Context) -> Self::Result {
+        if let Some(local_id) = self.local_id {
+            trace!(
+                "[SLMiddleman] Connection finished from local id {:?}.",
+                self.local_id
+            );
+            self.connection_handler_addr
+                .do_send(RemoveSLMiddleman { local_id });
+        } else {
+            trace!("[SLMiddleman] Connection finished from unknown local.")
+        }
+
+        ctx.stop();
+    }
 }
 
 //=============================================================================//
@@ -64,13 +91,13 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
     }
 
     fn finished(&mut self, ctx: &mut Self::Context) {
-        if let Some(id) = self.sl_id {
+        if let Some(sl_id) = self.local_id {
             trace!(
                 "[SLMiddleman] Connection finished from local id {:?}.",
-                self.sl_id
+                self.local_id
             );
             self.connection_handler_addr
-                .do_send(RemoveSLMiddleman { sl_id: id });
+                .do_send(RemoveSLMiddleman { local_id: sl_id });
         } else {
             trace!("[SLMiddleman] Connection finished from unknown local.")
         }
@@ -149,7 +176,7 @@ impl Handler<HandleStockMessageFromLocal> for SLMiddleman {
         msg: HandleStockMessageFromLocal,
         ctx: &mut Self::Context,
     ) -> Self::Result {
-        if let Some(id) = self.sl_id {
+        if let Some(id) = self.local_id {
             self.connection_handler_addr
                 .try_send(StockFromLocal {
                     sl_middleman_addr: ctx.address(),
@@ -205,14 +232,14 @@ impl Handler<HandleLoginLocalMessage> for SLMiddleman {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 pub struct SetUpId {
-    pub sl_id: u16,
+    pub local_id: u16,
 }
 
 impl Handler<SetUpId> for SLMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SetUpId, _: &mut Self::Context) -> Self::Result {
-        self.sl_id = Some(msg.sl_id);
+        self.local_id = Some(msg.local_id);
         Ok(())
     }
 }

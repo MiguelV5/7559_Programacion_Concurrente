@@ -35,6 +35,7 @@ async fn handle_incoming_servers(
     let listener = AsyncTcpListener::bind(DATABASE_IP)
         .await
         .map_err(|err| err.to_string())?;
+    info!("Listening for servers at {}", DATABASE_IP);
     loop {
         if let Ok((stream, stream_addr)) = listener.accept().await {
             if is_exit_required(&rx_from_input) {
