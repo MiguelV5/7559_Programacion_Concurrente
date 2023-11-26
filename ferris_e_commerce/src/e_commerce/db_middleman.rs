@@ -21,7 +21,7 @@ pub struct DBMiddleman {
     connection_handler: Addr<ConnectionHandler>,
     writer: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
 
-    current_sl_requesting_handshake: Option<Addr<SLMiddleman>>,
+    current_sl_requestor: Option<Addr<SLMiddleman>>,
 }
 
 impl DBMiddleman {
@@ -33,7 +33,7 @@ impl DBMiddleman {
             connection_handler,
             writer,
 
-            current_sl_requesting_handshake: None,
+            current_sl_requestor: None,
         }
     }
 }
@@ -112,19 +112,18 @@ impl Handler<HandleNewLocalIdFromDB> for DBMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: HandleNewLocalIdFromDB, _ctx: &mut Self::Context) -> Self::Result {
-        if let Some(sl_middleman) = &self.current_sl_requesting_handshake {
+        if let Some(sl_middleman) = &self.current_sl_requestor {
             info!(
                 "[DBMiddleman] Received new local id from db: {}",
                 msg.local_id
             );
-            &self
-                .connection_handler
+            self.connection_handler
                 .try_send(connection_handler::ResponseGetNewLocalId {
                     sl_middleman_addr: sl_middleman.clone(),
                     db_response_id: msg.local_id,
                 })
                 .map_err(|err| err.to_string())?;
-            self.current_sl_requesting_handshake = None;
+            self.current_sl_requestor = None;
             return Ok(());
         }
         error!("[DBMiddleman] Received new local id from db but no sl middleman was requesting it");
@@ -185,23 +184,23 @@ impl Handler<SendOnlineMsg> for DBMiddleman {
     }
 }
 
-// #[derive(Message, Debug, PartialEq, Eq)]
-// #[rtype(result = "Result<(), String>")]
-// pub struct RequestGetNewLocalId {
-//     pub requestor_sl_middleman: Addr<SLMiddleman>,
-// }
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct RequestGetNewLocalId {
+    pub requestor_sl_middleman: Addr<SLMiddleman>,
+}
 
-// impl Handler<RequestGetNewLocalId> for DBMiddleman {
-//     type Result = Result<(), String>;
+impl Handler<RequestGetNewLocalId> for DBMiddleman {
+    type Result = Result<(), String>;
 
-//     fn handle(&mut self, msg: RequestGetNewLocalId, ctx: &mut Self::Context) -> Self::Result {
-//         self.current_sl_requesting_handshake = Some(msg.requestor_sl_middleman);
-//         let msg_to_send = DBRequest::GetNewLocalId.to_string()?;
-//         ctx.address()
-//             .try_send(SendOnlineMsg { msg_to_send })
-//             .map_err(|err| err.to_string())
-//     }
-// }
+    fn handle(&mut self, msg: RequestGetNewLocalId, ctx: &mut Self::Context) -> Self::Result {
+        self.current_sl_requestor = Some(msg.requestor_sl_middleman);
+        let msg_to_send = DBRequest::GetNewLocalId.to_string()?;
+        ctx.address()
+            .try_send(SendOnlineMsg { msg_to_send })
+            .map_err(|err| err.to_string())
+    }
+}
 
 // #[derive(Message, Debug, PartialEq, Eq)]
 // #[rtype(result = "Result<(), String>")]

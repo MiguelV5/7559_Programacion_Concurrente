@@ -111,7 +111,7 @@ async fn start_actors(
         .send(connection_handler::AddDBMiddlemanAddr {
             db_communicator: db_communicator.clone(),
         })
-        .await?;
+        .await??;
 
     // let order_worker = OrderWorker::new(1, connection_handler.clone()).start();
     // order_handler

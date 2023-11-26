@@ -19,15 +19,14 @@ pub async fn setup_db_connection(
 ) -> Result<Addr<DBMiddleman>, String> {
     let addr = format!("{}", DATABASE_IP);
 
-    if let Ok(stream) = AsyncTcpStream::connect(addr.clone()).await {
-        info!("Connected to db at {}", addr);
-        let (reader, writer) = split(stream);
-        let db_middleman = DBMiddleman::create(|ctx| {
-            ctx.add_stream(LinesStream::new(BufReader::new(reader).lines()));
-            DBMiddleman::new(Arc::new(Mutex::new(writer)), connection_handler)
-        });
-        Ok(db_middleman)
-    } else {
-        Err(format!("Error connecting to db at {}", addr))
-    }
+    let stream = AsyncTcpStream::connect(addr.clone())
+        .await
+        .map_err(|err| err.to_string())?;
+    info!("Connected to db at {}", addr);
+    let (reader, writer) = split(stream);
+    let db_middleman = DBMiddleman::create(|ctx| {
+        ctx.add_stream(LinesStream::new(BufReader::new(reader).lines()));
+        DBMiddleman::new(Arc::new(Mutex::new(writer)), connection_handler)
+    });
+    Ok(db_middleman)
 }
