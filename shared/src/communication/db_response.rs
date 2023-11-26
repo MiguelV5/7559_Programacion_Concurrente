@@ -7,9 +7,9 @@ pub enum DBResponse {
     NewLocalId {
         local_id: u16,
     },
-    ProductQuantity {
+    ProductQuantityFromAllLocals {
         product_name: String,
-        product_quantity_by_local_id: HashMap<u16, u32>,
+        product_quantity_by_local_id: HashMap<u16, i32>,
     },
 }
 

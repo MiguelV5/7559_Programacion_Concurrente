@@ -11,7 +11,7 @@ use shared::model::stock_product::Product;
 use tokio::io::{AsyncWriteExt, WriteHalf};
 use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::Mutex;
-use tracing::{debug, error, trace};
+use tracing::{error, trace};
 
 use crate::e_commerce::connection_handler::RemoveSLMiddleman;
 

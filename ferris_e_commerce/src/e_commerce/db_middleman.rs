@@ -85,7 +85,7 @@ impl Handler<HandleOnlineMsg> for DBMiddleman {
                     .try_send(HandleNewLocalIdFromDB { local_id })
                     .map_err(|err| err.to_string())?;
             }
-            DBResponse::ProductQuantity {
+            DBResponse::ProductQuantityFromAllLocals {
                 product_name,
                 product_quantity_by_local_id,
             } => {
@@ -146,7 +146,14 @@ impl Handler<HandleProductQuantityFromDB> for DBMiddleman {
         _msg: HandleProductQuantityFromDB,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
-        Ok(())
+        let msg_to_send = DBRequest::GetProductQuantityFromAllLocals {
+            product_name: msg.product_name,
+        }
+        .to_string()?;
+        ctx.address()
+            .try_send(SendOnlineMsg { msg_to_send })
+            .map_err(|err| err.to_string())
+
     }
 }
 

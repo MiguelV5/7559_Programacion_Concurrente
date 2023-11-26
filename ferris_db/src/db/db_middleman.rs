@@ -8,7 +8,10 @@ use tokio::{
 };
 use tracing::{error, trace};
 
-use super::connection_handler::ConnectionHandler;
+use super::connection_handler::{
+    ConnectionHandler, GetNewLocalId, GetProductQuantityFromAllLocals, PostOrderResult,
+    PostStockFromLocal, SaveDBMiddlemanWithId,
+};
 
 pub struct DBMiddleman {
     pub writer: Arc<Mutex<WriteHalf<TcpStream>>>,
@@ -71,15 +74,6 @@ impl Handler<HandleOnlineMsg> for DBMiddleman {
                     .try_send(GetNewLocalId { db_middleman_addr })
                     .map_err(|err| err.to_string())
             }
-            DBRequest::CheckLocalId { local_id } => {
-                let db_middleman_addr = ctx.address();
-                self.connection_handler
-                    .try_send(CheckIfLocalIdExists {
-                        db_middleman_addr,
-                        local_id,
-                    })
-                    .map_err(|err| err.to_string())
-            }
             DBRequest::PostStockFromLocal { local_id, stock } => self
                 .connection_handler
                 .try_send(PostStockFromLocal { local_id, stock })
@@ -88,11 +82,11 @@ impl Handler<HandleOnlineMsg> for DBMiddleman {
                 .connection_handler
                 .try_send(PostOrderResult { order })
                 .map_err(|err| err.to_string()),
-            DBRequest::GetProductQuantityByLocalId { product_name } => {
+            DBRequest::GetProductQuantityFromAllLocals { product_name } => {
                 let db_middleman_addr = ctx.address();
                 self.connection_handler
-                    .try_send(GetProductQuantityByLocalId {
-                        db_middleman_addr,
+                    .try_send(GetProductQuantityFromAllLocals {
+                        requestor_db_middleman: db_middleman_addr,
                         product_name,
                     })
                     .map_err(|err| err.to_string())
