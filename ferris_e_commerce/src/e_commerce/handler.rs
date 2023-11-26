@@ -42,6 +42,21 @@ pub fn start(
     Ok(())
 }
 
+fn parse_given_orders(orders_file_path: &str) -> Result<Vec<Order>, Box<dyn Error>> {
+    let orders;
+    if let Ok(orders_parser) = OrdersParser::new_web(&format!(
+        "{}/{}",
+        env!("CARGO_MANIFEST_DIR"),
+        orders_file_path
+    )) {
+        orders = orders_parser.get_orders();
+    } else {
+        return Err("Error parsing orders file".into());
+    }
+
+    Ok(orders)
+}
+
 async fn start_async(
     orders: Vec<Order>,
     servers_listening_port: u16,
@@ -90,45 +105,26 @@ async fn start_actors(
     sl_id: u16,
 ) -> Result<(Addr<OrderHandler>, Addr<ConnectionHandler>), Box<dyn Error>> {
     let order_handler = OrderHandler::new(&orders).start();
-
-    let db_middleman = db_communicator::setup_db_connection().await?;
-    let connection_handler =
-        ConnectionHandler::new(order_handler.clone(), db_middleman.clone(), ss_id, sl_id).start();
-    db_middleman
-        .send(db_middleman::AddConnectionHandlerAddr {
-            ss_id,
-            connection_handler: connection_handler.clone(),
-        })
-        .await??;
-
-    let order_worker = OrderWorker::new(1, connection_handler.clone()).start();
-    // OrderWorker::new(1, order_handler.clone(), connection_handler.clone()).start();
-    order_handler
-        .send(order_handler::AddOrderWorkerAddr {
-            id: 1,
-            order_worker_addr: order_worker.clone(),
-        })
-        .await?;
+    let connection_handler = ConnectionHandler::new(order_handler.clone(), ss_id, sl_id).start();
+    let db_communicator = db_communicator::setup_db_connection(connection_handler.clone()).await?;
     connection_handler
-        .send(connection_handler::AddOrderWorkerAddr {
-            order_worker_addr: order_worker.clone(),
+        .send(connection_handler::AddDBMiddlemanAddr {
+            db_communicator: db_communicator.clone(),
         })
         .await?;
+
+    // let order_worker = OrderWorker::new(1, connection_handler.clone()).start();
+    // order_handler
+    //     .send(order_handler::AddOrderWorkerAddr {
+    //         id: 1,
+    //         order_worker_addr: order_worker.clone(),
+    //     })
+    //     .await?;
+    // connection_handler
+    //     .send(connection_handler::AddOrderWorkerAddr {
+    //         order_worker_addr: order_worker.clone(),
+    //     })
+    //     .await?;
 
     Ok((order_handler, connection_handler))
-}
-
-fn parse_given_orders(orders_file_path: &str) -> Result<Vec<Order>, Box<dyn Error>> {
-    let orders;
-    if let Ok(orders_parser) = OrdersParser::new_web(&format!(
-        "{}/{}",
-        env!("CARGO_MANIFEST_DIR"),
-        orders_file_path
-    )) {
-        orders = orders_parser.get_orders();
-    } else {
-        return Err("Error parsing orders file".into());
-    }
-
-    Ok(orders)
 }

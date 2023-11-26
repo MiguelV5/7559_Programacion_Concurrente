@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
 use actix_rt::System;
 use shared::communication::ls_message::LSMessage;
+use shared::model::order;
 use shared::model::{order::Order, stock_product::Product};
 use tokio::sync::mpsc::Sender;
 use tracing::{error, info, warn};
@@ -23,11 +24,12 @@ use super::{
 pub struct ConnectionHandler {
     am_alive: bool,
     local_id: Option<u16>,
-    curr_e_commerce_addr: Option<u16>,
+    curr_sl_id: Option<u16>,
 
     order_handler: Addr<OrderHandler>,
     stock_handler: Addr<StockHandler>,
     ls_middleman: Option<Addr<LSMiddleman>>,
+
     tx_close_connection: Option<Sender<String>>,
 
     order_results_pending_to_report: Vec<(Order, bool)>,
@@ -38,11 +40,14 @@ impl ConnectionHandler {
         Self {
             am_alive: true,
             local_id: None,
+            curr_sl_id: None,
+
             order_handler,
             stock_handler,
             ls_middleman: None,
+
             tx_close_connection: None,
-            curr_e_commerce_addr: None,
+
             order_results_pending_to_report: Vec::new(),
         }
     }
@@ -52,13 +57,9 @@ impl Actor for ConnectionHandler {
     type Context = Context<Self>;
 }
 
-// ==========================================================================
-// ==========================================================================
-// ==========================================================================
-// Setup
-// ==========================================================================
-// ==========================================================================
-// ==========================================================================
+//==================================================================//
+//============================= Set up =============================//
+//==================================================================//
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
@@ -119,13 +120,13 @@ impl Handler<AskAlive> for ConnectionHandler {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<u16, String>")]
-pub struct AskEcommerceAddr {}
+pub struct AskSLId {}
 
-impl Handler<AskEcommerceAddr> for ConnectionHandler {
+impl Handler<AskSLId> for ConnectionHandler {
     type Result = Result<u16, String>;
 
-    fn handle(&mut self, _: AskEcommerceAddr, _: &mut Context<Self>) -> Self::Result {
-        self.curr_e_commerce_addr
+    fn handle(&mut self, _: AskSLId, _: &mut Context<Self>) -> Self::Result {
+        self.curr_sl_id
             .ok_or("E-commerce address not set.".to_string())
     }
 }
@@ -145,7 +146,7 @@ impl Handler<AddLSMiddleman> for ConnectionHandler {
         info!("[ConnectionHandler] Adding new LsMiddleman.");
         self.ls_middleman = Some(msg.ls_middleman.clone());
         self.tx_close_connection = Some(msg.tx_close_connection);
-        self.curr_e_commerce_addr = Some(msg.e_commerce_addr);
+        self.curr_sl_id = Some(msg.e_commerce_addr);
 
         msg.ls_middleman
             .try_send(SendOnlineMessage {
@@ -159,34 +160,8 @@ impl Handler<AddLSMiddleman> for ConnectionHandler {
 
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(), String>")]
-pub struct RemoveLSMiddleman {}
-
-impl Handler<RemoveLSMiddleman> for ConnectionHandler {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, _: RemoveLSMiddleman, ctx: &mut Context<Self>) -> Self::Result {
-        info!("[ConnectionHandler] Removing LsMiddleman.");
-        self.ls_middleman = None;
-        self.curr_e_commerce_addr = None;
-        ctx.address()
-            .try_send(WakeUpConnection {})
-            .map_err(|err| err.to_string())?;
-        Ok(())
-    }
-}
-
-// ==========================================================================
-// ==========================================================================
-// ==========================================================================
-// Handshake
-// ==========================================================================
-// ==========================================================================
-// ==========================================================================
-
-#[derive(Message, Debug)]
-#[rtype(result = "Result<(), String>")]
 pub struct LeaderMessage {
-    pub leader_id: u16,
+    pub leader_sl_id: u16,
 }
 
 impl Handler<LeaderMessage> for ConnectionHandler {
@@ -195,8 +170,8 @@ impl Handler<LeaderMessage> for ConnectionHandler {
     fn handle(&mut self, msg: LeaderMessage, _: &mut Context<Self>) -> Self::Result {
         info!("[ConnectionHandler] Checking e-commerce leader address.");
 
-        if let Some(curr_e_commerce_id) = &mut self.curr_e_commerce_addr {
-            if curr_e_commerce_id == &msg.leader_id {
+        if let Some(curr_sl_id) = &mut self.curr_sl_id {
+            if curr_sl_id == &msg.leader_sl_id {
                 match self.local_id {
                     Some(local_id) => {
                         info!("[ConnectionHandler] Asking for logging in local with e-commerce.");
@@ -226,14 +201,18 @@ impl Handler<LeaderMessage> for ConnectionHandler {
                     }
                 }
             }
-            *curr_e_commerce_id = msg.leader_id;
+            *curr_sl_id = msg.leader_sl_id;
             if let Some(tx_close_connection) = &self.tx_close_connection {
                 tx_close_connection
                     .try_send(LEADER_ADRR.to_string())
                     .map_err(|err| err.to_string())?;
             }
         }
-        Ok(())
+        error!(
+            "[ConnectionHandler] Error checking e-commerce leader address: {:?}.",
+            msg
+        );
+        Err("Error checking e-commerce leader address.".to_owned())
     }
 }
 
@@ -251,13 +230,27 @@ impl Handler<LocalRegistered> for ConnectionHandler {
     }
 }
 
-// ==========================================================================
-// ==========================================================================
-// ==========================================================================
-// Connection
-// ==========================================================================
-// ==========================================================================
-// ==========================================================================
+#[derive(Message, Debug)]
+#[rtype(result = "Result<(), String>")]
+pub struct RemoveLSMiddleman {}
+
+impl Handler<RemoveLSMiddleman> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: RemoveLSMiddleman, ctx: &mut Context<Self>) -> Self::Result {
+        info!("[ConnectionHandler] Removing LsMiddleman.");
+        self.ls_middleman = None;
+        self.curr_sl_id = None;
+        ctx.address()
+            .try_send(WakeUpConnection {})
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    }
+}
+
+//==============================================================================//
+//============================= Console Management =============================//
+//==============================================================================//
 
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(), String>")]
@@ -268,7 +261,7 @@ impl Handler<StopConnection> for ConnectionHandler {
 
     fn handle(&mut self, msg: StopConnection, _: &mut Context<Self>) -> Self::Result {
         if let Some(ls_middleman) = self.ls_middleman.take() {
-            self.curr_e_commerce_addr = None;
+            self.curr_sl_id = None;
             ls_middleman
                 .try_send(CloseConnection {})
                 .map_err(|err| err.to_string())?;
@@ -305,13 +298,9 @@ impl Handler<WakeUpConnection> for ConnectionHandler {
     }
 }
 
-// ==========================================================================
-// ==========================================================================
-// ==========================================================================
-// Stock
-// ==========================================================================
-// ==========================================================================
-// ==========================================================================
+//=================================================================//
+//============================= Stock =============================//
+//=================================================================//
 
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(), String>")]
@@ -357,13 +346,9 @@ impl Handler<ResponseAllStockMessage> for ConnectionHandler {
     }
 }
 
-// ==========================================================================
-// ==========================================================================
-// ==========================================================================
-// Orders
-// ==========================================================================
-// ==========================================================================
-// ==========================================================================
+//==================================================================//
+//============================= Orders =============================//
+//==================================================================//
 
 #[derive(Message, Debug)]
 #[rtype(result = "Result<(), String>")]
@@ -530,7 +515,7 @@ impl Handler<TrySendFinishedWebOrder> for ConnectionHandler {
             .ls_middleman
             .clone()
             .ok_or("Should not happen, the LSMiddleman must be set".to_string())?;
-        let message;
+        let mut message;
         if let Order::Web(_) = &msg.order {
             if msg.was_finished {
                 message = LSMessage::OrderCompleted { order: msg.order }

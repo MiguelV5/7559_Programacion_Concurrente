@@ -21,7 +21,7 @@ use super::connection_handler::{
 };
 
 pub struct SLMiddleman {
-    pub id: Option<u16>,
+    pub sl_id: Option<u16>,
     pub connected_local_shop_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
     connection_handler_addr: Addr<ConnectionHandler>,
 }
@@ -32,7 +32,7 @@ impl SLMiddleman {
         connection_handler_addr: Addr<ConnectionHandler>,
     ) -> Self {
         Self {
-            id: None,
+            sl_id: None,
             connected_local_shop_write_stream,
             connection_handler_addr,
         }
@@ -43,7 +43,9 @@ impl Actor for SLMiddleman {
     type Context = Context<Self>;
 }
 
+//=============================================================================//
 //============================= Incoming Messages =============================//
+//=============================================================================//
 
 impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
@@ -62,13 +64,13 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
     }
 
     fn finished(&mut self, ctx: &mut Self::Context) {
-        if let Some(id) = self.id {
+        if let Some(id) = self.sl_id {
             trace!(
                 "[SLMiddleman] Connection finished from local id {:?}.",
-                self.id
+                self.sl_id
             );
             self.connection_handler_addr
-                .do_send(RemoveSLMiddleman { id });
+                .do_send(RemoveSLMiddleman { sl_id: id });
         } else {
             trace!("[SLMiddleman] Connection finished from unknown local.")
         }
@@ -147,7 +149,7 @@ impl Handler<HandleStockMessageFromLocal> for SLMiddleman {
         msg: HandleStockMessageFromLocal,
         ctx: &mut Self::Context,
     ) -> Self::Result {
-        if let Some(id) = self.id {
+        if let Some(id) = self.sl_id {
             self.connection_handler_addr
                 .try_send(StockFromLocal {
                     sl_middleman_addr: ctx.address(),
@@ -203,14 +205,14 @@ impl Handler<HandleLoginLocalMessage> for SLMiddleman {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 pub struct SetUpId {
-    pub id: u16,
+    pub sl_id: u16,
 }
 
 impl Handler<SetUpId> for SLMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SetUpId, _: &mut Self::Context) -> Self::Result {
-        self.id = Some(msg.id);
+        self.sl_id = Some(msg.sl_id);
         Ok(())
     }
 }
@@ -248,6 +250,10 @@ impl Handler<HandleOrderCancelledMessage> for SLMiddleman {
         Ok(())
     }
 }
+
+//=============================================================================//
+//============================= Outcoming Messages ============================//
+//=============================================================================//
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]

@@ -81,7 +81,7 @@ async fn connect_to_e_commerce(
             return Ok(());
         } else if msg == Some(LEADER_ADRR.to_string()) {
             let leader_addr = connection_handler_addr
-                .send(connection_handler::AskEcommerceAddr {})
+                .send(connection_handler::AskSLId {})
                 .await
                 .map_err(|err| err.to_string())??;
             connect_to_leader_e_commerce(leader_addr, connection_handler_addr).await?;

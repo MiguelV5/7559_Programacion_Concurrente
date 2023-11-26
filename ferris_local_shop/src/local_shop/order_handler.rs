@@ -31,6 +31,7 @@ impl OrderWorkerStatus {
 pub struct OrderHandler {
     local_orders: Vec<Order>,
     web_orders: Vec<Order>,
+
     order_workers: HashMap<usize, OrderWorkerStatus>,
     connection_handler: Option<Addr<ConnectionHandler>>,
 }
@@ -40,6 +41,7 @@ impl OrderHandler {
         Self {
             local_orders,
             web_orders: Vec::new(),
+
             order_workers: HashMap::new(),
             connection_handler: None,
         }
