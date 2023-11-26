@@ -1,4 +1,4 @@
-use std::{error::Error, fmt};
+use std::{collections::HashMap, error::Error, fmt};
 
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +28,17 @@ pub enum SSMessage {
     SelectedLeader {
         leader_ss_id: u16,
         leader_sl_id: u16,
+    },
+    DelegateAskForStockProduct {
+        requestor_ss_id: u16,
+        requestor_worker_id: u16,
+        product_name: String,
+    },
+    SolvedAskForStockProduct {
+        requestor_ss_id: u16,
+        requestor_worker_id: u16,
+        product_name: String,
+        stock: HashMap<u16, i32>,
     },
     DelegateOrderToLeader {
         order: Order,

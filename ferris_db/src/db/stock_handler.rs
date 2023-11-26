@@ -125,6 +125,8 @@ impl Handler<PostOrderResult> for StockHandler {
 pub struct GetProductQuantityFromAllLocals {
     pub requestor_db_middleman: Addr<DBMiddleman>,
     pub connection_handler: Addr<ConnectionHandler>,
+    pub requestor_ss_id: u16,
+    pub requestor_worker_id: u16,
     pub product_name: String,
 }
 
@@ -143,6 +145,8 @@ impl Handler<GetProductQuantityFromAllLocals> for StockHandler {
                 connection_handler::ReplyToRequestorWithProductQuantityFromAllLocals {
                     requestor_db_middleman: msg.requestor_db_middleman,
                     product_quantity_in_locals: products_quantity_in_locals,
+                    requestor_ss_id: msg.requestor_ss_id,
+                    requestor_worker_id: msg.requestor_worker_id,
                     product_name: msg.product_name,
                 },
             )

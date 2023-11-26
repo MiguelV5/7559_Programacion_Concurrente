@@ -8,6 +8,8 @@ pub enum DBResponse {
         local_id: u16,
     },
     ProductQuantityFromAllLocals {
+        ss_id: u16,
+        worker_id: u16,
         product_name: String,
         product_quantity_by_local_id: HashMap<u16, i32>,
     },

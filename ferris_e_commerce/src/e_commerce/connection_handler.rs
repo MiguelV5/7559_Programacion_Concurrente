@@ -1,17 +1,13 @@
 use std::collections::HashMap;
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
-use serde_json::error;
 use shared::{
     communication::{db_request::DBRequest, sl_message::SLMessage, ss_message::SSMessage},
     model::{order::Order, stock_product::Product},
 };
 use tracing::{error, info, warn};
 
-use crate::e_commerce::{
-    db_communicator,
-    sl_middleman::{self, SetUpId},
-};
+use crate::e_commerce::sl_middleman::{self, SetUpId};
 
 use crate::e_commerce::ss_middleman;
 
@@ -147,12 +143,15 @@ pub struct RegisterSSMiddleman {
 impl Handler<RegisterSSMiddleman> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: RegisterSSMiddleman, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RegisterSSMiddleman, ctx: &mut Self::Context) -> Self::Result {
         info!("Registering new SS.");
         self.ss_communicators
             .insert(msg.ss_id, msg.ss_middleman_addr.clone());
-        // TODO: Enviar todas las order results pendientes a este nuevo SS
-        Ok(())
+        ctx.address()
+            .try_send(TrySendPendingOrderResultsToOtherServer {
+                dest_ss_id: msg.ss_id,
+            })
+            .map_err(|err| err.to_string())
     }
 }
 
@@ -492,6 +491,45 @@ impl Handler<SendOrderResultToOrderWorker> for ConnectionHandler {
     }
 }
 
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct AskForStockProductFromOrderWorker {
+    pub product_name: String,
+    pub worker_id: u16,
+}
+
+impl Handler<AskForStockProductFromOrderWorker> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(
+        &mut self,
+        msg: AskForStockProductFromOrderWorker,
+        ctx: &mut Self::Context,
+    ) -> Self::Result {
+        ctx.address()
+            .try_send(AskForStockProduct {
+                requestor_ss_id: self.my_ss_id,
+                requestor_worker_id: msg.worker_id,
+                product_name: msg.product_name.clone(),
+            })
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct WorkNewOrder {
+    pub order: Order,
+}
+
+impl Handler<WorkNewOrder> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: WorkNewOrder, ctx: &mut Self::Context) -> Self::Result {
+        Ok(())
+    }
+}
+
 //===============================================================================//
 //============================= SS Messages: Orders =============================//
 //===============================================================================//
@@ -507,8 +545,8 @@ impl Handler<SendOrderResultToOtherServer> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SendOrderResultToOtherServer, _: &mut Self::Context) -> Self::Result {
-        if let Some(dest_server_id) = msg.order.get_ss_id_web() {
-            if let Some(ss_middleman) = self.ss_communicators.get(&dest_server_id) {
+        if let Some(dest_ss_id) = msg.order.get_ss_id_web() {
+            if let Some(ss_middleman) = self.ss_communicators.get(&dest_ss_id) {
                 if ss_middleman
                     .try_send(ss_middleman::SendOnlineMsg {
                         msg_to_send: SSMessage::SolvedPreviouslyDelegatedOrder {
@@ -529,7 +567,7 @@ impl Handler<SendOrderResultToOtherServer> for ConnectionHandler {
             }
             error!("[ConnectionHandler] Could not send order result to other server. Saving as pending.");
             self.order_results_pending_to_redirect
-                .entry(dest_server_id)
+                .entry(dest_ss_id)
                 .and_modify(|v| v.push((msg.order.clone(), msg.was_completed)))
                 .or_insert(vec![(msg.order.clone(), msg.was_completed)]);
         }
@@ -542,8 +580,7 @@ impl Handler<SendOrderResultToOtherServer> for ConnectionHandler {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 pub struct TrySendPendingOrderResultsToOtherServer {
-    pub ss_middleman_addr: Addr<SSMiddleman>,
-    pub dest_server_id: u16,
+    pub dest_ss_id: u16,
 }
 
 impl Handler<TrySendPendingOrderResultsToOtherServer> for ConnectionHandler {
@@ -554,31 +591,24 @@ impl Handler<TrySendPendingOrderResultsToOtherServer> for ConnectionHandler {
         msg: TrySendPendingOrderResultsToOtherServer,
         ctx: &mut Self::Context,
     ) -> Self::Result {
-        if let Some(pending_order_results) = self
+        info!(
+            "[ConnectionHandler] Trying to send pending order results to server {}.",
+            msg.dest_ss_id
+        );
+        if let Some(orders) = self
             .order_results_pending_to_redirect
-            .get_mut(&msg.dest_server_id)
+            .get_mut(&msg.dest_ss_id)
         {
-            if let Some((order, was_finished)) = pending_order_results.pop() {
-                match msg
-                    .ss_middleman_addr
-                    .try_send(ss_middleman::SendRedirectedOrderResult {
-                        order: order.clone(),
-                        was_completed: was_finished,
-                    }) {
-                    Ok(_) => {
-                        info!(
-                            "[ConnectionHandler] Pending Order result sent to other server: {:?}.",
-                            order
-                        );
-                    }
-                    Err(_) => {
-                        pending_order_results.push((order, was_finished));
-                    }
-                };
+            if let Some((order, was_completed)) = orders.pop() {
+                ctx.address()
+                    .try_send(SendOrderResultToOtherServer {
+                        order,
+                        was_completed,
+                    })
+                    .map_err(|err| err.to_string())?;
                 ctx.address()
                     .try_send(TrySendPendingOrderResultsToOtherServer {
-                        ss_middleman_addr: msg.ss_middleman_addr,
-                        dest_server_id: msg.dest_server_id,
+                        dest_ss_id: msg.dest_ss_id,
                     })
                     .map_err(|err| err.to_string())?;
             }
@@ -587,7 +617,33 @@ impl Handler<TrySendPendingOrderResultsToOtherServer> for ConnectionHandler {
     }
 }
 
-#[derive(Message)]
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct SendOrderResultToDataBase {
+    pub order: Order,
+}
+
+impl Handler<SendOrderResultToDataBase> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: SendOrderResultToDataBase, _: &mut Self::Context) -> Self::Result {
+        if let Some(db_communicator) = &self.db_communicator {
+            info!("[ConnectionHandler] Sending order result to DB.");
+            return db_communicator
+                .try_send(db_middleman::SendOnlineMsg {
+                    msg_to_send: DBRequest::PostOrderResult { order: msg.order }
+                        .to_string()
+                        .map_err(|err| err.to_string())?,
+                })
+                .map_err(|err| err.to_string());
+        }
+
+        error!("[ConnectionHandler] DBMiddleman not found.");
+        Err("DBMiddleman not found.".to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(),String>")]
 pub struct DelegateOrderToLeader {
     pub order: Order,
@@ -621,34 +677,102 @@ impl Handler<DelegateOrderToLeader> for ConnectionHandler {
     }
 }
 
+//=================================================================//
+//============================= Stock =============================//
+//=================================================================//
+
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct SendOrderResultToDataBase {
-    pub order: Order,
+pub struct AskForStockProduct {
+    pub requestor_ss_id: u16,
+    pub requestor_worker_id: u16,
+    pub product_name: String,
 }
 
-impl Handler<SendOrderResultToDataBase> for ConnectionHandler {
+impl Handler<AskForStockProduct> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: SendOrderResultToDataBase, _: &mut Self::Context) -> Self::Result {
-        if let Some(db_communicator) = &self.db_communicator {
-            info!("[ConnectionHandler] Sending order result to DB.");
-            return db_communicator
-                .try_send(db_middleman::SendOnlineMsg {
-                    msg_to_send: DBRequest::PostOrderResult { order: msg.order }
-                        .to_string()
-                        .map_err(|err| err.to_string())?,
+    fn handle(&mut self, msg: AskForStockProduct, ctx: &mut Self::Context) -> Self::Result {
+        if self.leader_ss_id != Some(self.my_ss_id) {
+            return ctx
+                .address()
+                .try_send(RedirectAskForStockProduct {
+                    requestor_ss_id: msg.requestor_ss_id,
+                    requestor_worker_id: msg.requestor_worker_id,
+                    product_name: msg.product_name.clone(),
                 })
                 .map_err(|err| err.to_string());
         }
 
-        error!("[ConnectionHandler] DBMiddleman not found.");
-        Err("DBMiddleman not found.".to_string())
+        if let Some(db_comminicator) = &self.db_communicator {
+            db_comminicator
+                .try_send(db_middleman::SendOnlineMsg {
+                    msg_to_send: DBRequest::GetProductQuantityFromAllLocals {
+                        ss_id: msg.requestor_ss_id,
+                        worker_id: msg.requestor_worker_id,
+                        product_name: msg.product_name.clone(),
+                    }
+                    .to_string()
+                    .map_err(|err| err.to_string())?,
+                })
+                .map_err(|err| err.to_string())?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+struct RedirectAskForStockProduct {
+    requestor_ss_id: u16,
+    requestor_worker_id: u16,
+    product_name: String,
+}
+
+impl Handler<RedirectAskForStockProduct> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: RedirectAskForStockProduct, _: &mut Self::Context) -> Self::Result {
+        if let Some(leader_ss_id) = self.leader_ss_id {
+            if let Some(leader_ss_middleman) = self.ss_communicators.get(&leader_ss_id) {
+                leader_ss_middleman
+                    .try_send(ss_middleman::SendOnlineMsg {
+                        msg_to_send: SSMessage::DelegateAskForStockProduct {
+                            requestor_ss_id: msg.requestor_ss_id,
+                            requestor_worker_id: msg.requestor_worker_id,
+                            product_name: msg.product_name.clone(),
+                        }
+                        .to_string()
+                        .map_err(|err| err.to_string())?,
+                    })
+                    .map_err(|err| err.to_string())?;
+                return Ok(());
+            }
+        }
+        error!("[ConnectionHandler] No leader selected yet");
+        Err("No leader selected yet".to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct HandleProductQuantityFromDB {
+    pub ss_id: u16,
+    pub worker_id: u16,
+    pub product_name: String,
+    pub product_quantity_by_local_id: HashMap<u16, i32>,
+}
+
+impl Handler<HandleProductQuantityFromDB> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: HandleProductQuantityFromDB, _: &mut Self::Context) -> Self::Result {
+        Ok(())
     }
 }
 
 //========================================================================================//
-//============================= SL Messages: Leader Election =============================//
+//============================= SS Messages: Leader Election =============================//
 //========================================================================================//
 
 #[derive(Message)]

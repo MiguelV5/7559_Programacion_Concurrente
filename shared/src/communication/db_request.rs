@@ -18,6 +18,8 @@ pub enum DBRequest {
         order: Order,
     },
     GetProductQuantityFromAllLocals {
+        ss_id: u16,
+        worker_id: u16,
         product_name: String,
     },
 }

@@ -82,15 +82,19 @@ impl Handler<HandleOnlineMsg> for DBMiddleman {
                 .connection_handler
                 .try_send(PostOrderResult { order })
                 .map_err(|err| err.to_string()),
-            DBRequest::GetProductQuantityFromAllLocals { product_name } => {
-                let db_middleman_addr = ctx.address();
-                self.connection_handler
-                    .try_send(GetProductQuantityFromAllLocals {
-                        requestor_db_middleman: db_middleman_addr,
-                        product_name,
-                    })
-                    .map_err(|err| err.to_string())
-            }
+            DBRequest::GetProductQuantityFromAllLocals {
+                ss_id,
+                worker_id,
+                product_name,
+            } => self
+                .connection_handler
+                .try_send(GetProductQuantityFromAllLocals {
+                    requestor_db_middleman: ctx.address(),
+                    requestor_ss_id: ss_id,
+                    requestor_worker_id: worker_id,
+                    product_name,
+                })
+                .map_err(|err| err.to_string()),
         }
     }
 }

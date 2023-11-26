@@ -115,6 +115,8 @@ impl Handler<PostOrderResult> for ConnectionHandler {
 #[rtype(result = "Result<(), String>")]
 pub struct GetProductQuantityFromAllLocals {
     pub requestor_db_middleman: Addr<DBMiddleman>,
+    pub requestor_ss_id: u16,
+    pub requestor_worker_id: u16,
     pub product_name: String,
 }
 
@@ -130,6 +132,8 @@ impl Handler<GetProductQuantityFromAllLocals> for ConnectionHandler {
             .try_send(stock_handler::GetProductQuantityFromAllLocals {
                 requestor_db_middleman: msg.requestor_db_middleman,
                 connection_handler: ctx.address(),
+                requestor_ss_id: msg.requestor_ss_id,
+                requestor_worker_id: msg.requestor_worker_id,
                 product_name: msg.product_name,
             })
             .map_err(|err| err.to_string())
@@ -141,6 +145,8 @@ impl Handler<GetProductQuantityFromAllLocals> for ConnectionHandler {
 pub struct ReplyToRequestorWithProductQuantityFromAllLocals {
     pub requestor_db_middleman: Addr<DBMiddleman>,
     pub product_quantity_in_locals: HashMap<u16, i32>,
+    pub requestor_ss_id: u16,
+    pub requestor_worker_id: u16,
     pub product_name: String,
 }
 
@@ -153,6 +159,8 @@ impl Handler<ReplyToRequestorWithProductQuantityFromAllLocals> for ConnectionHan
         _: &mut Self::Context,
     ) -> Self::Result {
         let msg_to_send = DBResponse::ProductQuantityFromAllLocals {
+            ss_id: msg.requestor_ss_id,
+            worker_id: msg.requestor_worker_id,
             product_name: msg.product_name,
             product_quantity_by_local_id: msg.product_quantity_in_locals,
         }

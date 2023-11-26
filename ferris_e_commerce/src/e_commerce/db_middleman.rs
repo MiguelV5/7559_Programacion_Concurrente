@@ -15,6 +15,7 @@ use tracing::trace;
 
 use super::connection_handler;
 use super::connection_handler::ConnectionHandler;
+use super::connection_handler::HandleProductQuantityFromDB;
 use super::sl_middleman::SLMiddleman;
 
 pub struct DBMiddleman {
@@ -87,11 +88,15 @@ impl Handler<HandleOnlineMsg> for DBMiddleman {
                     .map_err(|err| err.to_string())?;
             }
             DBResponse::ProductQuantityFromAllLocals {
+                ss_id,
+                worker_id,
                 product_name,
                 product_quantity_by_local_id,
             } => {
-                ctx.address()
+                self.connection_handler
                     .try_send(HandleProductQuantityFromDB {
+                        ss_id,
+                        worker_id,
                         product_name,
                         product_quantity_by_local_id,
                     })
@@ -104,8 +109,8 @@ impl Handler<HandleOnlineMsg> for DBMiddleman {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct HandleNewLocalIdFromDB {
-    pub local_id: u16,
+struct HandleNewLocalIdFromDB {
+    local_id: u16,
 }
 
 impl Handler<HandleNewLocalIdFromDB> for DBMiddleman {
@@ -128,25 +133,6 @@ impl Handler<HandleNewLocalIdFromDB> for DBMiddleman {
         }
         error!("[DBMiddleman] Received new local id from db but no sl middleman was requesting it");
         Err("Received new local id from db but no sl middleman was requesting it".to_string())
-    }
-}
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-pub struct HandleProductQuantityFromDB {
-    pub product_name: String,
-    pub product_quantity_by_local_id: HashMap<u16, i32>,
-}
-
-impl Handler<HandleProductQuantityFromDB> for DBMiddleman {
-    type Result = Result<(), String>;
-
-    fn handle(
-        &mut self,
-        msg: HandleProductQuantityFromDB,
-        ctx: &mut Self::Context,
-    ) -> Self::Result {
-        Ok(())
     }
 }
 
@@ -201,67 +187,3 @@ impl Handler<RequestGetNewLocalId> for DBMiddleman {
             .map_err(|err| err.to_string())
     }
 }
-
-// #[derive(Message, Debug, PartialEq, Eq)]
-// #[rtype(result = "Result<(), String>")]
-// pub struct SendPostStockFromLocal {
-//     pub local_id: u16,
-//     pub stock: HashMap<String, Product>,
-// }
-
-// impl Handler<SendPostStockFromLocal> for DBMiddleman {
-//     type Result = Result<(), String>;
-
-//     fn handle(&mut self, msg: SendPostStockFromLocal, ctx: &mut Self::Context) -> Self::Result {
-//         let msg_to_send = DBRequest::PostStockFromLocal {
-//             local_id: msg.local_id,
-//             stock: msg.stock,
-//         }
-//         .to_string()?;
-//         ctx.address()
-//             .try_send(SendOnlineMsg { msg_to_send })
-//             .map_err(|err| err.to_string())
-//     }
-// }
-
-// #[derive(Message, Debug, PartialEq, Eq)]
-// #[rtype(result = "Result<(), String>")]
-// pub struct SendPostOrderResult {
-//     pub order: shared::model::order::Order,
-// }
-
-// impl Handler<SendPostOrderResult> for DBMiddleman {
-//     type Result = Result<(), String>;
-
-//     fn handle(&mut self, msg: SendPostOrderResult, ctx: &mut Self::Context) -> Self::Result {
-//         let msg_to_send = DBRequest::PostOrderResult { order: msg.order }.to_string()?;
-//         ctx.address()
-//             .try_send(SendOnlineMsg { msg_to_send })
-//             .map_err(|err| err.to_string())
-//     }
-// }
-
-// #[derive(Message, Debug, PartialEq, Eq)]
-// #[rtype(result = "Result<(), String>")]
-// pub struct SendGetProductQuantityByLocalId {
-//     pub local_id: u16,
-//     pub product_name: String,
-// }
-
-// impl Handler<SendGetProductQuantityByLocalId> for DBMiddleman {
-//     type Result = Result<(), String>;
-
-//     fn handle(
-//         &mut self,
-//         msg: SendGetProductQuantityByLocalId,
-//         ctx: &mut Self::Context,
-//     ) -> Self::Result {
-//         let msg_to_send = DBRequest::GetProductQuantityByLocalId {
-//             product_name: msg.product_name,
-//         }
-//         .to_string()?;
-//         ctx.address()
-//             .try_send(SendOnlineMsg { msg_to_send })
-//             .map_err(|err| err.to_string())
-//     }
-// }
