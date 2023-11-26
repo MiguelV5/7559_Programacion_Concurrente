@@ -17,7 +17,7 @@ pub fn start(
 
     let (sender_of_order_handler, receiver_of_order_hander) = channel::<Addr<OrderHandler>>();
     let (sender_of_tx_to_sl, receiver_of_tx_to_sl) = channel::<mpsc::Sender<String>>();
-    let (sender_tx_to_ss, receiver_of_tx_to_ss) = channel::<mpsc::Sender<String>>();
+    let (sender_of_tx_to_ss, receiver_of_tx_to_ss) = channel::<mpsc::Sender<String>>();
 
     let input_handle = input_handler::setup_input_listener(
         servers_listening_port,
@@ -33,7 +33,7 @@ pub fn start(
         locals_listening_port,
         sender_of_order_handler,
         sender_of_tx_to_sl,
-        sender_tx_to_ss,
+        sender_of_tx_to_ss,
     ))?;
 
     input_handle
@@ -96,9 +96,10 @@ async fn start_actors(
         ConnectionHandler::new(order_handler.clone(), db_middleman.clone(), ss_id, sl_id).start();
     db_middleman
         .send(db_middleman::AddConnectionHandlerAddr {
+            ss_id,
             connection_handler: connection_handler.clone(),
         })
-        .await?;
+        .await??;
 
     let order_worker = OrderWorker::new(1, connection_handler.clone()).start();
     // OrderWorker::new(1, order_handler.clone(), connection_handler.clone()).start();

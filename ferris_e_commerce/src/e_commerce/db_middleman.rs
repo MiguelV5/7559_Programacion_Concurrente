@@ -140,16 +140,26 @@ impl Handler<SendOnlineMsg> for DBMiddleman {
 // ================================================================================
 
 #[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "()")]
+#[rtype(result = "Result<(), String>")]
 pub struct AddConnectionHandlerAddr {
+    pub ss_id: u16,
     pub connection_handler: Addr<ConnectionHandler>,
 }
 
 impl Handler<AddConnectionHandlerAddr> for DBMiddleman {
-    type Result = ();
+    type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: AddConnectionHandlerAddr, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: AddConnectionHandlerAddr, ctx: &mut Self::Context) -> Self::Result {
         self.connection_handler = Some(msg.connection_handler);
+        ctx.address()
+            .try_send(SendOnlineMsg {
+                msg_to_send: DBRequest::TakeMyEcommerceId {
+                    ecommerce_id: msg.ss_id,
+                }
+                .to_string()
+                .map_err(|err| err.to_string())?,
+            })
+            .map_err(|err| err.to_string())
     }
 }
 

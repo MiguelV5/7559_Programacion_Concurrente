@@ -6,6 +6,9 @@ use crate::model::{order::Order, stock_product::Product};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum DBRequest {
+    TakeMyEcommerceId {
+        ecommerce_id: u16,
+    },
     GetNewLocalId,
     CheckLocalId {
         local_id: u16,

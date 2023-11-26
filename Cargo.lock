@@ -148,7 +148,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "database"
+name = "ferris_db"
 version = "0.1.0"
 dependencies = [
  "actix",
