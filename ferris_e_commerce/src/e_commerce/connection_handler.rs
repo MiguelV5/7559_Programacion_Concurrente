@@ -274,7 +274,12 @@ impl Handler<LoginLocalMessage> for ConnectionHandler {
             msg.local_id
         );
 
-        Ok(())
+        self.db_middleman_addr
+            .try_send(db_middleman::SendCheckLocalId {
+                local_id: msg.local_id,
+                requestor_sl_middleman: msg.sl_middleman_addr.clone(),
+            })
+            .map_err(|err| err.to_string())
     }
 }
 

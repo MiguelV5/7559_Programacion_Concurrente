@@ -169,7 +169,7 @@ impl Handler<HandleLocalSuccessfulLogIn> for LSMiddleman {
             "[LSMiddleman] Successfully logged in. Sending order results that were pending, if any."
         );
         self.connection_handler_addr
-            .try_send(connection_handler::TrySendOrderResults {})
+            .try_send(connection_handler::TrySendPendingOrderResults {})
             .map_err(|err| err.to_string())
     }
 }

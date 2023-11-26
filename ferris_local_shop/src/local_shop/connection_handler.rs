@@ -241,20 +241,16 @@ impl Handler<LeaderMessage> for ConnectionHandlerActor {
 }
 
 #[derive(Message, Debug)]
-#[rtype(result = "Result<(), String>")]
+#[rtype(result = "()")]
 pub struct LocalRegistered {
     pub local_id: u16,
 }
 
 impl Handler<LocalRegistered> for ConnectionHandlerActor {
-    type Result = Result<(), String>;
+    type Result = ();
 
-    fn handle(&mut self, msg: LocalRegistered, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: LocalRegistered, _ctx: &mut Context<Self>) -> Self::Result {
         self.local_id = Some(msg.local_id);
-        ctx.address()
-            .try_send(TrySendOrderResults {})
-            .map_err(|err| err.to_string())?;
-        Ok(())
     }
 }
 
@@ -392,12 +388,12 @@ impl Handler<WorkNewOrder> for ConnectionHandlerActor {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct TrySendOrderResults {}
+pub struct TrySendPendingOrderResults {}
 
-impl Handler<TrySendOrderResults> for ConnectionHandlerActor {
+impl Handler<TrySendPendingOrderResults> for ConnectionHandlerActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, _: TrySendOrderResults, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _: TrySendPendingOrderResults, ctx: &mut Context<Self>) -> Self::Result {
         if self.local_id.is_none() || self.ls_middleman.is_none() {
             return Ok(());
         }
@@ -410,7 +406,7 @@ impl Handler<TrySendOrderResults> for ConnectionHandlerActor {
                 })
                 .map_err(|err| err.to_string())?;
             ctx.address()
-                .try_send(TrySendOrderResults {})
+                .try_send(TrySendPendingOrderResults {})
                 .map_err(|err| err.to_string())?;
         } else {
             info!("[ConnectionHandler] No order results pending to report.");
@@ -433,7 +429,7 @@ impl Handler<TrySendFinishedOrder> for ConnectionHandlerActor {
         if self.local_id.is_none() || self.ls_middleman.is_none() {
             return ctx
                 .address()
-                .try_send(SaveNewFinishedOrder {
+                .try_send(SaveFinishedOrderForLater {
                     order: msg.order,
                     was_finished: msg.was_finished,
                 })
@@ -464,15 +460,15 @@ impl Handler<TrySendFinishedOrder> for ConnectionHandlerActor {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-struct SaveNewFinishedOrder {
+struct SaveFinishedOrderForLater {
     order: Order,
     was_finished: bool,
 }
 
-impl Handler<SaveNewFinishedOrder> for ConnectionHandlerActor {
+impl Handler<SaveFinishedOrderForLater> for ConnectionHandlerActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: SaveNewFinishedOrder, _: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: SaveFinishedOrderForLater, _: &mut Context<Self>) -> Self::Result {
         info!(
             "[ConnectionHandler] Saving new finished order to send: {:?}.",
             msg
@@ -493,7 +489,7 @@ struct TrySendFinishedLocalOrder {
 impl Handler<TrySendFinishedLocalOrder> for ConnectionHandlerActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: TrySendFinishedLocalOrder, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: TrySendFinishedLocalOrder, _ctx: &mut Context<Self>) -> Self::Result {
         let ls_middleman = self
             .ls_middleman
             .clone()
@@ -518,9 +514,6 @@ impl Handler<TrySendFinishedLocalOrder> for ConnectionHandlerActor {
             .try_send(SendOnlineMessage {
                 msg_to_send: message.to_string().map_err(|err| err.to_string())?,
             })
-            .map_err(|err| err.to_string())?;
-        ctx.address()
-            .try_send(TrySendOrderResults {})
             .map_err(|err| err.to_string())
     }
 }
@@ -535,7 +528,7 @@ struct TrySendFinishedWebOrder {
 impl Handler<TrySendFinishedWebOrder> for ConnectionHandlerActor {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: TrySendFinishedWebOrder, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: TrySendFinishedWebOrder, _ctx: &mut Context<Self>) -> Self::Result {
         let ls_middleman = self
             .ls_middleman
             .clone()
@@ -559,9 +552,6 @@ impl Handler<TrySendFinishedWebOrder> for ConnectionHandlerActor {
             .try_send(SendOnlineMessage {
                 msg_to_send: message.to_string().map_err(|err| err.to_string())?,
             })
-            .map_err(|err| err.to_string())?;
-        ctx.address()
-            .try_send(TrySendOrderResults {})
             .map_err(|err| err.to_string())
     }
 }
