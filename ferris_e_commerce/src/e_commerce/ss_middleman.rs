@@ -16,8 +16,8 @@ use tokio::sync::Mutex;
 use crate::e_commerce::connection_handler::{CheckIfTheOneWhoClosedWasLeader, LeaderElection};
 
 use super::connection_handler::{
-    AskForStockProduct, ConnectionHandler, LeaderSelected, OrderCancelledFromLocal,
-    OrderCompletedFromLocal, RegisterSSMiddleman,
+    AskForStockProduct, ConnectionHandler, HandleSolvedAskForStockProduct, LeaderSelected,
+    OrderCancelledFromLocal, OrderCompletedFromLocal, RegisterSSMiddleman,
 };
 
 pub struct SSMiddleman {
@@ -105,7 +105,16 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
                 requestor_worker_id,
                 product_name,
                 stock,
-            } => {}
+            } => {
+                self.connection_handler
+                    .try_send(HandleSolvedAskForStockProduct {
+                        ss_id: requestor_ss_id,
+                        worker_id: requestor_worker_id,
+                        product_name,
+                        stock,
+                    })
+                    .map_err(|err| err.to_string())?;
+            }
             SSMessage::DelegateAskForStockProduct {
                 requestor_ss_id,
                 requestor_worker_id,
@@ -121,6 +130,9 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
             }
             SSMessage::DelegateOrderToLeader { order } => {
                 info!("ORDER DELEGATED: {:?}", order);
+            }
+            SSMessage::CannotDispatchOrder { order } => {
+                info!("ORDER CANNOT BE DISPATCHED: {:?}", order);
             }
             SSMessage::SolvedPreviouslyDelegatedOrder {
                 order,

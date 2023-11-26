@@ -43,6 +43,9 @@ pub enum SSMessage {
     DelegateOrderToLeader {
         order: Order,
     },
+    CannotDispatchOrder {
+        order: Order,
+    },
     SolvedPreviouslyDelegatedOrder {
         order: Order,
         was_completed: bool,
