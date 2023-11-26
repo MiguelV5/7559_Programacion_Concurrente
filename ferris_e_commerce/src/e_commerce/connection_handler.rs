@@ -168,7 +168,7 @@ impl Handler<AddSLMiddleman> for ConnectionHandler {
     fn handle(&mut self, msg: AddSLMiddleman, _: &mut Self::Context) -> Self::Result {
         info!("[ConnectionHandler] Removing middleman.");
         self.sl_communicators
-            .insert(msg.sl_id, msg.sl_middleman_addr);
+            .insert(msg.sl_id, msg.sl_middleman_addr.clone());
 
         msg.sl_middleman_addr
             .try_send(SetUpId { sl_id: msg.sl_id })
@@ -252,7 +252,7 @@ impl Handler<RegisterLocal> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: RegisterLocal, _ctx: &mut Self::Context) -> Self::Result {
-        if let Some(db_communicator) = self.db_communicator {
+        if let Some(db_communicator) = &self.db_communicator {
             info!("[ConnectionHandler] Registering new local.");
             return db_communicator
                 .try_send(db_middleman::SendOnlineMsg {
@@ -325,7 +325,7 @@ impl Handler<StockFromLocal> for ConnectionHandler {
     fn handle(&mut self, msg: StockFromLocal, _: &mut Self::Context) -> Self::Result {
         info!("[ConnectionHandler] Received all stock from a local.");
 
-        if let Some(db_communicator) = self.db_communicator {
+        if let Some(db_communicator) = &self.db_communicator {
             return db_communicator
                 .try_send(db_middleman::SendOnlineMsg {
                     msg_to_send: DBRequest::PostStockFromLocal {
@@ -633,7 +633,7 @@ impl Handler<SendOrderResultToDataBase> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SendOrderResultToDataBase, _: &mut Self::Context) -> Self::Result {
-        if let Some(db_communicator) = self.db_communicator {
+        if let Some(db_communicator) = &self.db_communicator {
             info!("[ConnectionHandler] Sending order result to DB.");
             return db_communicator
                 .try_send(db_middleman::SendOnlineMsg {

@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use actix::fut::wrap_future;
 use actix::prelude::*;
+use shared::communication::db_request::DBRequest;
 use shared::communication::db_response::DBResponse;
 use tokio::io::AsyncWriteExt;
 use tokio::io::WriteHalf;
@@ -135,7 +136,7 @@ impl Handler<HandleNewLocalIdFromDB> for DBMiddleman {
 #[rtype(result = "Result<(), String>")]
 pub struct HandleProductQuantityFromDB {
     pub product_name: String,
-    pub product_quantity_by_local_id: HashMap<u16, u32>,
+    pub product_quantity_by_local_id: HashMap<u16, i32>,
 }
 
 impl Handler<HandleProductQuantityFromDB> for DBMiddleman {
@@ -143,17 +144,10 @@ impl Handler<HandleProductQuantityFromDB> for DBMiddleman {
 
     fn handle(
         &mut self,
-        _msg: HandleProductQuantityFromDB,
-        _ctx: &mut Self::Context,
+        msg: HandleProductQuantityFromDB,
+        ctx: &mut Self::Context,
     ) -> Self::Result {
-        let msg_to_send = DBRequest::GetProductQuantityFromAllLocals {
-            product_name: msg.product_name,
-        }
-        .to_string()?;
-        ctx.address()
-            .try_send(SendOnlineMsg { msg_to_send })
-            .map_err(|err| err.to_string())
-
+        Ok(())
     }
 }
 
