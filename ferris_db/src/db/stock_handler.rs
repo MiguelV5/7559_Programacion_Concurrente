@@ -1,8 +1,14 @@
 use std::collections::HashMap;
 
-use actix::Actor;
+use actix::prelude::*;
+
 use shared::model::{order::Order, stock_product::Product};
 use tracing::{error, trace};
+
+use super::{
+    connection_handler::{self, ConnectionHandler},
+    db_middleman::DBMiddleman,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StockHandler {
@@ -93,6 +99,14 @@ impl StockHandler {
 
         Ok(())
     }
+
+    pub fn process_post_to_stock_from_local(
+        &mut self,
+        local_id: u16,
+        stock: HashMap<String, Product>,
+    ) {
+        self.add_local_shop_stock(local_id, stock);
+    }
 }
 
 impl Actor for StockHandler {
@@ -103,7 +117,68 @@ impl Actor for StockHandler {
     }
 }
 
-// ========================================================
+// ====================================================================
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "()")]
+pub struct PostStockFromLocal {
+    pub local_id: u16,
+    pub stock: HashMap<String, Product>,
+}
+
+impl Handler<PostStockFromLocal> for StockHandler {
+    type Result = ();
+
+    fn handle(&mut self, msg: PostStockFromLocal, _: &mut Self::Context) -> Self::Result {
+        self.process_post_to_stock_from_local(msg.local_id, msg.stock);
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct PostOrderResult {
+    pub order: Order,
+}
+
+impl Handler<PostOrderResult> for StockHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: PostOrderResult, _: &mut Self::Context) -> Self::Result {
+        self.process_order_result_in_stock(msg.order)
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct GetProductQuantityFromAllLocals {
+    pub requestor_db_middleman: Addr<DBMiddleman>,
+    pub connection_handler: Addr<ConnectionHandler>,
+    pub product_name: String,
+}
+
+impl Handler<GetProductQuantityFromAllLocals> for StockHandler {
+    type Result = Result<(), String>;
+
+    fn handle(
+        &mut self,
+        msg: GetProductQuantityFromAllLocals,
+        _: &mut Self::Context,
+    ) -> Self::Result {
+        let products_quantity_in_locals =
+            self.get_quantity_of_product_from_all_stocks(msg.product_name.clone());
+        msg.connection_handler
+            .try_send(
+                connection_handler::ReplyToRequestorWithProductQuantityFromAllLocals {
+                    requestor_db_middleman: msg.requestor_db_middleman,
+                    product_quantity_in_locals: products_quantity_in_locals,
+                    product_name: msg.product_name,
+                },
+            )
+            .map_err(|err| err.to_string())
+    }
+}
+
+// ====================================================================
 
 #[cfg(test)]
 mod tests {
