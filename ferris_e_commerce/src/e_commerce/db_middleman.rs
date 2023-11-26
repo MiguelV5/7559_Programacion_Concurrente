@@ -3,14 +3,13 @@ use std::sync::Arc;
 
 use actix::fut::wrap_future;
 use actix::prelude::*;
-use shared::communication::db_request::DBRequest;
 use shared::communication::db_response::DBResponse;
-use shared::model::stock_product::Product;
 use tokio::io::AsyncWriteExt;
 use tokio::io::WriteHalf;
 use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::Mutex;
 use tracing::error;
+use tracing::info;
 use tracing::trace;
 
 use super::connection_handler;
@@ -18,16 +17,21 @@ use super::connection_handler::ConnectionHandler;
 use super::sl_middleman::SLMiddleman;
 
 pub struct DBMiddleman {
-    connection_handler: Option<Addr<ConnectionHandler>>,
+    connection_handler: Addr<ConnectionHandler>,
     writer: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
+
     current_sl_requesting_handshake: Option<Addr<SLMiddleman>>,
 }
 
 impl DBMiddleman {
-    pub fn new(writer: Arc<Mutex<WriteHalf<AsyncTcpStream>>>) -> Self {
+    pub fn new(
+        writer: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
+        connection_handler: Addr<ConnectionHandler>,
+    ) -> Self {
         Self {
-            connection_handler: None,
+            connection_handler,
             writer,
+
             current_sl_requesting_handshake: None,
         }
     }
@@ -36,6 +40,10 @@ impl DBMiddleman {
 impl Actor for DBMiddleman {
     type Context = Context<Self>;
 }
+
+//=============================================================================//
+//============================= Incoming Messages =============================//
+//=============================================================================//
 
 impl StreamHandler<Result<String, std::io::Error>> for DBMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
@@ -54,7 +62,9 @@ impl StreamHandler<Result<String, std::io::Error>> for DBMiddleman {
     }
 
     fn finished(&mut self, ctx: &mut Self::Context) {
-        trace!("Connection finished with DB.",);
+        trace!("[DBMiddleman] Connection finished with DB.");
+        self.connection_handler
+            .do_send(connection_handler::RemoveDBMiddleman {});
         ctx.stop();
     }
 }
@@ -93,6 +103,66 @@ impl Handler<HandleOnlineMsg> for DBMiddleman {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
+pub struct HandleNewLocalIdFromDB {
+    pub local_id: u16,
+}
+
+impl Handler<HandleNewLocalIdFromDB> for DBMiddleman {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: HandleNewLocalIdFromDB, _ctx: &mut Self::Context) -> Self::Result {
+        if let Some(sl_middleman) = &self.current_sl_requesting_handshake {
+            info!(
+                "[DBMiddleman] Received new local id from db: {}",
+                msg.local_id
+            );
+            &self
+                .connection_handler
+                .try_send(connection_handler::ResponseGetNewLocalId {
+                    sl_middleman_addr: sl_middleman.clone(),
+                    db_response_id: msg.local_id,
+                })
+                .map_err(|err| err.to_string())?;
+            self.current_sl_requesting_handshake = None;
+            return Ok(());
+        }
+        error!("[DBMiddleman] Received new local id from db but no sl middleman was requesting it");
+        Err("Received new local id from db but no sl middleman was requesting it".to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct HandleProductQuantityFromDB {
+    pub product_name: String,
+    pub product_quantity_by_local_id: HashMap<u16, u32>,
+}
+
+impl Handler<HandleProductQuantityFromDB> for DBMiddleman {
+    type Result = Result<(), String>;
+
+    fn handle(
+        &mut self,
+        _msg: HandleProductQuantityFromDB,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        let msg_to_send = DBRequest::GetProductQuantityFromAllLocals {
+            product_name: msg.product_name,
+        }
+        .to_string()?;
+        ctx.address()
+            .try_send(SendOnlineMsg { msg_to_send })
+            .map_err(|err| err.to_string())
+
+    }
+}
+
+//==============================================================================//
+//============================= Outcoming Messages =============================//
+//==============================================================================//
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
 pub struct SendOnlineMsg {
     pub msg_to_send: String,
 }
@@ -121,168 +191,84 @@ impl Handler<SendOnlineMsg> for DBMiddleman {
     }
 }
 
-// ================================================================================
+// #[derive(Message, Debug, PartialEq, Eq)]
+// #[rtype(result = "Result<(), String>")]
+// pub struct RequestGetNewLocalId {
+//     pub requestor_sl_middleman: Addr<SLMiddleman>,
+// }
 
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-pub struct AddConnectionHandlerAddr {
-    pub ss_id: u16,
-    pub connection_handler: Addr<ConnectionHandler>,
-}
+// impl Handler<RequestGetNewLocalId> for DBMiddleman {
+//     type Result = Result<(), String>;
 
-impl Handler<AddConnectionHandlerAddr> for DBMiddleman {
-    type Result = Result<(), String>;
+//     fn handle(&mut self, msg: RequestGetNewLocalId, ctx: &mut Self::Context) -> Self::Result {
+//         self.current_sl_requesting_handshake = Some(msg.requestor_sl_middleman);
+//         let msg_to_send = DBRequest::GetNewLocalId.to_string()?;
+//         ctx.address()
+//             .try_send(SendOnlineMsg { msg_to_send })
+//             .map_err(|err| err.to_string())
+//     }
+// }
 
-    fn handle(&mut self, msg: AddConnectionHandlerAddr, ctx: &mut Self::Context) -> Self::Result {
-        self.connection_handler = Some(msg.connection_handler);
-        ctx.address()
-            .try_send(SendOnlineMsg {
-                msg_to_send: DBRequest::TakeMyEcommerceId {
-                    ecommerce_id: msg.ss_id,
-                }
-                .to_string()
-                .map_err(|err| err.to_string())?,
-            })
-            .map_err(|err| err.to_string())
-    }
-}
+// #[derive(Message, Debug, PartialEq, Eq)]
+// #[rtype(result = "Result<(), String>")]
+// pub struct SendPostStockFromLocal {
+//     pub local_id: u16,
+//     pub stock: HashMap<String, Product>,
+// }
 
-// ================================================================================
+// impl Handler<SendPostStockFromLocal> for DBMiddleman {
+//     type Result = Result<(), String>;
 
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-pub struct RequestGetNewLocalId {
-    pub requestor_sl_middleman: Addr<SLMiddleman>,
-}
+//     fn handle(&mut self, msg: SendPostStockFromLocal, ctx: &mut Self::Context) -> Self::Result {
+//         let msg_to_send = DBRequest::PostStockFromLocal {
+//             local_id: msg.local_id,
+//             stock: msg.stock,
+//         }
+//         .to_string()?;
+//         ctx.address()
+//             .try_send(SendOnlineMsg { msg_to_send })
+//             .map_err(|err| err.to_string())
+//     }
+// }
 
-impl Handler<RequestGetNewLocalId> for DBMiddleman {
-    type Result = Result<(), String>;
+// #[derive(Message, Debug, PartialEq, Eq)]
+// #[rtype(result = "Result<(), String>")]
+// pub struct SendPostOrderResult {
+//     pub order: shared::model::order::Order,
+// }
 
-    fn handle(&mut self, msg: RequestGetNewLocalId, ctx: &mut Self::Context) -> Self::Result {
-        self.current_sl_requesting_handshake = Some(msg.requestor_sl_middleman);
-        let msg_to_send = DBRequest::GetNewLocalId.to_string()?;
-        ctx.address()
-            .try_send(SendOnlineMsg { msg_to_send })
-            .map_err(|err| err.to_string())
-    }
-}
+// impl Handler<SendPostOrderResult> for DBMiddleman {
+//     type Result = Result<(), String>;
 
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-pub struct SendPostStockFromLocal {
-    pub local_id: u16,
-    pub stock: HashMap<String, Product>,
-}
+//     fn handle(&mut self, msg: SendPostOrderResult, ctx: &mut Self::Context) -> Self::Result {
+//         let msg_to_send = DBRequest::PostOrderResult { order: msg.order }.to_string()?;
+//         ctx.address()
+//             .try_send(SendOnlineMsg { msg_to_send })
+//             .map_err(|err| err.to_string())
+//     }
+// }
 
-impl Handler<SendPostStockFromLocal> for DBMiddleman {
-    type Result = Result<(), String>;
+// #[derive(Message, Debug, PartialEq, Eq)]
+// #[rtype(result = "Result<(), String>")]
+// pub struct SendGetProductQuantityByLocalId {
+//     pub local_id: u16,
+//     pub product_name: String,
+// }
 
-    fn handle(&mut self, msg: SendPostStockFromLocal, ctx: &mut Self::Context) -> Self::Result {
-        let msg_to_send = DBRequest::PostStockFromLocal {
-            local_id: msg.local_id,
-            stock: msg.stock,
-        }
-        .to_string()?;
-        ctx.address()
-            .try_send(SendOnlineMsg { msg_to_send })
-            .map_err(|err| err.to_string())
-    }
-}
+// impl Handler<SendGetProductQuantityByLocalId> for DBMiddleman {
+//     type Result = Result<(), String>;
 
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-pub struct SendPostOrderResult {
-    pub order: shared::model::order::Order,
-}
-
-impl Handler<SendPostOrderResult> for DBMiddleman {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, msg: SendPostOrderResult, ctx: &mut Self::Context) -> Self::Result {
-        let msg_to_send = DBRequest::PostOrderResult { order: msg.order }.to_string()?;
-        ctx.address()
-            .try_send(SendOnlineMsg { msg_to_send })
-            .map_err(|err| err.to_string())
-    }
-}
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-pub struct SendGetProductQuantityByLocalId {
-    pub local_id: u16,
-    pub product_name: String,
-}
-
-impl Handler<SendGetProductQuantityByLocalId> for DBMiddleman {
-    type Result = Result<(), String>;
-
-    fn handle(
-        &mut self,
-        msg: SendGetProductQuantityByLocalId,
-        ctx: &mut Self::Context,
-    ) -> Self::Result {
-        let msg_to_send = DBRequest::GetProductQuantityFromAllLocals {
-            product_name: msg.product_name,
-        }
-        .to_string()?;
-        ctx.address()
-            .try_send(SendOnlineMsg { msg_to_send })
-            .map_err(|err| err.to_string())
-    }
-}
-
-// ================================================================================
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-pub struct HandleNewLocalIdFromDB {
-    pub local_id: u16,
-}
-
-impl Handler<HandleNewLocalIdFromDB> for DBMiddleman {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, msg: HandleNewLocalIdFromDB, _ctx: &mut Self::Context) -> Self::Result {
-        if let Some(connection_handler) = &self.connection_handler {
-            if let Some(sl_middleman) = &self.current_sl_requesting_handshake {
-                connection_handler
-                    .try_send(connection_handler::ResponseGetNewLocalId {
-                        sl_middleman_addr: sl_middleman.clone(),
-                        db_response_id: msg.local_id,
-                    })
-                    .map_err(|err| err.to_string())?;
-                self.current_sl_requesting_handshake = None;
-            }
-        }
-        Ok(())
-    }
-}
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-pub struct HandleProductQuantityFromDB {
-    pub product_name: String,
-    pub product_quantity_by_local_id: HashMap<u16, u32>,
-}
-
-impl Handler<HandleProductQuantityFromDB> for DBMiddleman {
-    type Result = Result<(), String>;
-
-    fn handle(
-        &mut self,
-        msg: HandleProductQuantityFromDB,
-        _ctx: &mut Self::Context,
-    ) -> Self::Result {
-        if let Some(connection_handler) = &self.connection_handler {
-            // connection_handler
-            //     .try_send(connection_handler::ProductQuantityFromDB {
-            //         product_name: msg.product_name,
-            //         quantity: msg.quantity,
-            //         requestor_ss_id: msg.requestor_ss_id,
-            //     })
-            //     .map_err(|err| err.to_string())?;
-            error!("TODO: HandleProductQuantityFromDB")
-        }
-        Ok(())
-    }
-}
+//     fn handle(
+//         &mut self,
+//         msg: SendGetProductQuantityByLocalId,
+//         ctx: &mut Self::Context,
+//     ) -> Self::Result {
+//         let msg_to_send = DBRequest::GetProductQuantityByLocalId {
+//             product_name: msg.product_name,
+//         }
+//         .to_string()?;
+//         ctx.address()
+//             .try_send(SendOnlineMsg { msg_to_send })
+//             .map_err(|err| err.to_string())
+//     }
+// }

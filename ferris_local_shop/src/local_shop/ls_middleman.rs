@@ -59,7 +59,9 @@ struct HandleOnlineMsg {
     received_msg: String,
 }
 
+//=============================================================================//
 //============================= Incoming Messages =============================//
+//=============================================================================//
 
 impl StreamHandler<Result<String, std::io::Error>> for LSMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
@@ -89,9 +91,9 @@ impl Handler<HandleOnlineMsg> for LSMiddleman {
 
     fn handle(&mut self, msg: HandleOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
         match SLMessage::from_string(&msg.received_msg).map_err(|err| err.to_string())? {
-            SLMessage::LeaderMessage { leader_id } => ctx
+            SLMessage::LeaderMessage { leader_sl_id } => ctx
                 .address()
-                .try_send(HandleLeaderMessage { leader_id })
+                .try_send(HandleLeaderMessage { leader_sl_id })
                 .map_err(|err| err.to_string()),
             SLMessage::LocalSuccessfullyRegistered { local_id } => ctx
                 .address()
@@ -116,17 +118,17 @@ impl Handler<HandleOnlineMsg> for LSMiddleman {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 struct HandleLeaderMessage {
-    leader_id: u16,
+    leader_sl_id: u16,
 }
 
 impl Handler<HandleLeaderMessage> for LSMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: HandleLeaderMessage, _: &mut Self::Context) -> Self::Result {
-        info!("[LSMiddleman] Leader message received: {}.", msg.leader_id);
+        info!("[LSMiddleman] Leader SL Id received: {}.", msg.leader_sl_id);
         self.connection_handler_addr
             .try_send(LeaderMessage {
-                leader_id: msg.leader_id,
+                leader_sl_id: msg.leader_sl_id,
             })
             .map_err(|err| err.to_string())
     }
@@ -206,7 +208,9 @@ impl Handler<HandleWorkNewOrderMessage> for LSMiddleman {
     }
 }
 
+//==============================================================================//
 //============================= Outcoming Messages =============================//
+//==============================================================================//
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
