@@ -23,20 +23,12 @@ impl StockHandler {
         }
     }
 
-    pub fn check_local_id_exists(&self, local_id: u16) -> bool {
-        self.global_stock.contains_key(&local_id)
-    }
-
     pub fn add_local_shop_stock(
         &mut self,
         local_shop_id: u16,
         local_shop_stock: HashMap<String, Product>,
     ) {
         self.global_stock.insert(local_shop_id, local_shop_stock);
-    }
-
-    pub fn get_local_shop_stock(&self, local_shop_id: u16) -> Option<HashMap<String, Product>> {
-        self.global_stock.get(&local_shop_id).cloned()
     }
 
     pub fn get_quantity_of_product_from_all_stocks(
@@ -52,26 +44,6 @@ impl StockHandler {
             }
         }
         products_quantity_in_locals
-    }
-
-    pub fn get_quantity_of_product_from_specific_stock(
-        &self,
-        local_shop_id: u16,
-        product_name: String,
-    ) -> Option<i32> {
-        if let Some(local_shop_stock) = self.global_stock.get(&local_shop_id).cloned() {
-            local_shop_stock
-                .get(&product_name)
-                .cloned()
-                .map(|product| product.get_quantity())
-        } else {
-            None
-        }
-    }
-
-    pub fn get_all_local_shops_stock(&self) -> HashMap<u16, HashMap<String, Product>> {
-        let global_stock = self.global_stock.clone();
-        global_stock.clone()
     }
 
     pub fn process_order_result_in_stock(&mut self, order: Order) -> Result<(), String> {
@@ -183,46 +155,6 @@ impl Handler<GetProductQuantityFromAllLocals> for StockHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_add_local_shop_stock() {
-        let mut global_stock = StockHandler::new();
-        let mut local_shop_stock = HashMap::new();
-        local_shop_stock.insert(
-            "product1".to_string(),
-            Product::new("product1".to_string(), 10),
-        );
-        local_shop_stock.insert(
-            "product2".to_string(),
-            Product::new("product2".to_string(), 20),
-        );
-        global_stock.add_local_shop_stock(1, local_shop_stock.clone());
-        if let Some(local_shop_stock) = global_stock.get_local_shop_stock(1) {
-            assert_eq!(local_shop_stock, local_shop_stock);
-        } else {
-            panic!("Local shop stock not found");
-        }
-    }
-
-    #[test]
-    fn test_get_local_shop_stock() {
-        let mut global_stock = StockHandler::new();
-        let mut local_shop_stock = HashMap::new();
-        local_shop_stock.insert(
-            "product1".to_string(),
-            Product::new("product1".to_string(), 10),
-        );
-        local_shop_stock.insert(
-            "product2".to_string(),
-            Product::new("product2".to_string(), 20),
-        );
-        global_stock.add_local_shop_stock(1, local_shop_stock.clone());
-        if let Some(local_shop_stock) = global_stock.get_local_shop_stock(1) {
-            assert_eq!(local_shop_stock, local_shop_stock);
-        } else {
-            panic!("Local shop stock not found");
-        }
-    }
 
     #[test]
     fn test_get_products_quantity_in_locals() {
