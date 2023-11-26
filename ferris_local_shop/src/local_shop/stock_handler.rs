@@ -7,24 +7,24 @@ use tracing::{error, trace};
 use crate::local_shop::connection_handler::ResponseAllStockMessage;
 
 use super::{
-    connection_handler::ConnectionHandlerActor,
+    connection_handler::ConnectionHandler,
     order_worker::{
-        OrderWorkerActor, StockNoProduct, StockProductGiven, StockProductReserved,
+        OrderWorker, StockNoProduct, StockProductGiven, StockProductReserved,
         StockReservedProductGiven,
     },
 };
 
 #[derive(Debug, Default, PartialEq, Eq)]
-pub struct StockHandlerActor {
+pub struct StockHandler {
     stock: HashMap<String, Product>,
     reserved_stock: HashMap<String, Product>,
 }
 
-impl Actor for StockHandlerActor {
+impl Actor for StockHandler {
     type Context = SyncContext<Self>;
 }
 
-impl StockHandlerActor {
+impl StockHandler {
     pub fn new(stock: HashMap<String, Product>) -> Self {
         Self {
             stock,
@@ -40,11 +40,11 @@ impl StockHandlerActor {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 pub struct TakeProduct {
-    pub worker_addr: Addr<OrderWorkerActor>,
+    pub worker_addr: Addr<OrderWorker>,
     pub product: Product,
 }
 
-impl Handler<TakeProduct> for StockHandlerActor {
+impl Handler<TakeProduct> for StockHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: TakeProduct, _ctx: &mut SyncContext<Self>) -> Self::Result {
@@ -82,7 +82,7 @@ pub struct ReturnProduct {
     pub product: Product,
 }
 
-impl Handler<ReturnProduct> for StockHandlerActor {
+impl Handler<ReturnProduct> for StockHandler {
     type Result = ();
 
     fn handle(&mut self, msg: ReturnProduct, _ctx: &mut SyncContext<Self>) -> Self::Result {
@@ -102,11 +102,11 @@ impl Handler<ReturnProduct> for StockHandlerActor {
 #[derive(Message)]
 #[rtype(result = "Result<(), String>")]
 pub struct ReserveProduct {
-    pub worker_addr: Addr<OrderWorkerActor>,
+    pub worker_addr: Addr<OrderWorker>,
     pub product: Product,
 }
 
-impl Handler<ReserveProduct> for StockHandlerActor {
+impl Handler<ReserveProduct> for StockHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: ReserveProduct, _ctx: &mut SyncContext<Self>) -> Self::Result {
@@ -148,11 +148,11 @@ impl Handler<ReserveProduct> for StockHandlerActor {
 #[derive(Message)]
 #[rtype(result = "Result<(), String>")]
 pub struct TakeReservedProduct {
-    pub worker_addr: Addr<OrderWorkerActor>,
+    pub worker_addr: Addr<OrderWorker>,
     pub product: Product,
 }
 
-impl Handler<TakeReservedProduct> for StockHandlerActor {
+impl Handler<TakeReservedProduct> for StockHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: TakeReservedProduct, _ctx: &mut SyncContext<Self>) -> Self::Result {
@@ -189,7 +189,7 @@ pub struct UnreserveProduct {
     pub product: Product,
 }
 
-impl Handler<UnreserveProduct> for StockHandlerActor {
+impl Handler<UnreserveProduct> for StockHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: UnreserveProduct, _ctx: &mut SyncContext<Self>) -> Self::Result {
@@ -216,10 +216,10 @@ impl Handler<UnreserveProduct> for StockHandlerActor {
 #[derive(Message)]
 #[rtype(result = "Result<(), String>")]
 pub struct AskAllStock {
-    pub connection_handler_addr: Addr<ConnectionHandlerActor>,
+    pub connection_handler_addr: Addr<ConnectionHandler>,
 }
 
-impl Handler<AskAllStock> for StockHandlerActor {
+impl Handler<AskAllStock> for StockHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: AskAllStock, _ctx: &mut SyncContext<Self>) -> Self::Result {

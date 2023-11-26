@@ -15,12 +15,12 @@ use tokio::sync::Mutex;
 
 use crate::local_shop::connection_handler::{self, LeaderMessage, RemoveLSMiddleman};
 
-use super::connection_handler::ConnectionHandlerActor;
+use super::connection_handler::ConnectionHandler;
 
 #[derive(Debug)]
 pub struct LSMiddleman {
     connected_server_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
-    connection_handler_addr: Addr<ConnectionHandlerActor>,
+    connection_handler_addr: Addr<ConnectionHandler>,
 }
 
 impl Actor for LSMiddleman {
@@ -30,7 +30,7 @@ impl Actor for LSMiddleman {
 impl LSMiddleman {
     pub fn new(
         connected_server_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
-        connection_handler_addr: Addr<ConnectionHandlerActor>,
+        connection_handler_addr: Addr<ConnectionHandler>,
     ) -> Self {
         Self {
             connected_server_write_stream,

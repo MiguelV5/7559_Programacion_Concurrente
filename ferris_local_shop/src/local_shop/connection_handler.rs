@@ -15,29 +15,26 @@ use crate::local_shop::{
 
 use super::{
     ls_middleman::LSMiddleman,
-    order_handler::{self, OrderHandlerActor},
-    stock_handler::StockHandlerActor,
+    order_handler::{self, OrderHandler},
+    stock_handler::StockHandler,
 };
 
 #[derive(Debug)]
-pub struct ConnectionHandlerActor {
+pub struct ConnectionHandler {
     am_alive: bool,
     local_id: Option<u16>,
     curr_e_commerce_addr: Option<u16>,
 
-    order_handler: Addr<OrderHandlerActor>,
-    stock_handler: Addr<StockHandlerActor>,
+    order_handler: Addr<OrderHandler>,
+    stock_handler: Addr<StockHandler>,
     ls_middleman: Option<Addr<LSMiddleman>>,
     tx_close_connection: Option<Sender<String>>,
 
     order_results_pending_to_report: Vec<(Order, bool)>,
 }
 
-impl ConnectionHandlerActor {
-    pub fn new(
-        order_handler: Addr<OrderHandlerActor>,
-        stock_handler: Addr<StockHandlerActor>,
-    ) -> Self {
+impl ConnectionHandler {
+    pub fn new(order_handler: Addr<OrderHandler>, stock_handler: Addr<StockHandler>) -> Self {
         Self {
             am_alive: true,
             local_id: None,
@@ -51,7 +48,7 @@ impl ConnectionHandlerActor {
     }
 }
 
-impl Actor for ConnectionHandlerActor {
+impl Actor for ConnectionHandler {
     type Context = Context<Self>;
 }
 
@@ -67,7 +64,7 @@ impl Actor for ConnectionHandlerActor {
 #[rtype(result = "Result<(), String>")]
 pub struct StartUp {}
 
-impl Handler<StartUp> for ConnectionHandlerActor {
+impl Handler<StartUp> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: StartUp, _ctx: &mut Context<Self>) -> Self::Result {
@@ -82,7 +79,7 @@ impl Handler<StartUp> for ConnectionHandlerActor {
 #[rtype(result = "Result<(), String>")]
 pub struct CloseSystem {}
 
-impl Handler<CloseSystem> for ConnectionHandlerActor {
+impl Handler<CloseSystem> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: CloseSystem, _: &mut Context<Self>) -> Self::Result {
@@ -112,7 +109,7 @@ impl Handler<CloseSystem> for ConnectionHandlerActor {
 #[rtype(result = "bool")]
 pub struct AskAlive {}
 
-impl Handler<AskAlive> for ConnectionHandlerActor {
+impl Handler<AskAlive> for ConnectionHandler {
     type Result = bool;
 
     fn handle(&mut self, _: AskAlive, _: &mut Context<Self>) -> Self::Result {
@@ -124,7 +121,7 @@ impl Handler<AskAlive> for ConnectionHandlerActor {
 #[rtype(result = "Result<u16, String>")]
 pub struct AskEcommerceAddr {}
 
-impl Handler<AskEcommerceAddr> for ConnectionHandlerActor {
+impl Handler<AskEcommerceAddr> for ConnectionHandler {
     type Result = Result<u16, String>;
 
     fn handle(&mut self, _: AskEcommerceAddr, _: &mut Context<Self>) -> Self::Result {
@@ -141,7 +138,7 @@ pub struct AddLSMiddleman {
     pub e_commerce_addr: u16,
 }
 
-impl Handler<AddLSMiddleman> for ConnectionHandlerActor {
+impl Handler<AddLSMiddleman> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: AddLSMiddleman, _: &mut Context<Self>) -> Self::Result {
@@ -164,7 +161,7 @@ impl Handler<AddLSMiddleman> for ConnectionHandlerActor {
 #[rtype(result = "Result<(), String>")]
 pub struct RemoveLSMiddleman {}
 
-impl Handler<RemoveLSMiddleman> for ConnectionHandlerActor {
+impl Handler<RemoveLSMiddleman> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: RemoveLSMiddleman, ctx: &mut Context<Self>) -> Self::Result {
@@ -192,7 +189,7 @@ pub struct LeaderMessage {
     pub leader_id: u16,
 }
 
-impl Handler<LeaderMessage> for ConnectionHandlerActor {
+impl Handler<LeaderMessage> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: LeaderMessage, _: &mut Context<Self>) -> Self::Result {
@@ -246,7 +243,7 @@ pub struct LocalRegistered {
     pub local_id: u16,
 }
 
-impl Handler<LocalRegistered> for ConnectionHandlerActor {
+impl Handler<LocalRegistered> for ConnectionHandler {
     type Result = ();
 
     fn handle(&mut self, msg: LocalRegistered, _ctx: &mut Context<Self>) -> Self::Result {
@@ -266,7 +263,7 @@ impl Handler<LocalRegistered> for ConnectionHandlerActor {
 #[rtype(result = "Result<(), String>")]
 pub struct StopConnection {}
 
-impl Handler<StopConnection> for ConnectionHandlerActor {
+impl Handler<StopConnection> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: StopConnection, _: &mut Context<Self>) -> Self::Result {
@@ -291,7 +288,7 @@ impl Handler<StopConnection> for ConnectionHandlerActor {
 #[rtype(result = "Result<(), String>")]
 pub struct WakeUpConnection {}
 
-impl Handler<WakeUpConnection> for ConnectionHandlerActor {
+impl Handler<WakeUpConnection> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: WakeUpConnection, _: &mut Context<Self>) -> Self::Result {
@@ -320,7 +317,7 @@ impl Handler<WakeUpConnection> for ConnectionHandlerActor {
 #[rtype(result = "Result<(), String>")]
 pub struct AskAllStockMessage {}
 
-impl Handler<AskAllStockMessage> for ConnectionHandlerActor {
+impl Handler<AskAllStockMessage> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: AskAllStockMessage, ctx: &mut Context<Self>) -> Self::Result {
@@ -339,7 +336,7 @@ pub struct ResponseAllStockMessage {
     pub stock: HashMap<String, Product>,
 }
 
-impl Handler<ResponseAllStockMessage> for ConnectionHandlerActor {
+impl Handler<ResponseAllStockMessage> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: ResponseAllStockMessage, _: &mut Context<Self>) -> Self::Result {
@@ -374,7 +371,7 @@ pub struct WorkNewOrder {
     pub order: Order,
 }
 
-impl Handler<WorkNewOrder> for ConnectionHandlerActor {
+impl Handler<WorkNewOrder> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: WorkNewOrder, _: &mut Context<Self>) -> Self::Result {
@@ -390,7 +387,7 @@ impl Handler<WorkNewOrder> for ConnectionHandlerActor {
 #[rtype(result = "Result<(), String>")]
 pub struct TrySendPendingOrderResults {}
 
-impl Handler<TrySendPendingOrderResults> for ConnectionHandlerActor {
+impl Handler<TrySendPendingOrderResults> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: TrySendPendingOrderResults, ctx: &mut Context<Self>) -> Self::Result {
@@ -422,7 +419,7 @@ pub struct TrySendFinishedOrder {
     pub was_finished: bool,
 }
 
-impl Handler<TrySendFinishedOrder> for ConnectionHandlerActor {
+impl Handler<TrySendFinishedOrder> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: TrySendFinishedOrder, ctx: &mut Context<Self>) -> Self::Result {
@@ -465,7 +462,7 @@ struct SaveFinishedOrderForLater {
     was_finished: bool,
 }
 
-impl Handler<SaveFinishedOrderForLater> for ConnectionHandlerActor {
+impl Handler<SaveFinishedOrderForLater> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SaveFinishedOrderForLater, _: &mut Context<Self>) -> Self::Result {
@@ -486,7 +483,7 @@ struct TrySendFinishedLocalOrder {
     was_finished: bool,
 }
 
-impl Handler<TrySendFinishedLocalOrder> for ConnectionHandlerActor {
+impl Handler<TrySendFinishedLocalOrder> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: TrySendFinishedLocalOrder, _ctx: &mut Context<Self>) -> Self::Result {
@@ -525,7 +522,7 @@ struct TrySendFinishedWebOrder {
     was_finished: bool,
 }
 
-impl Handler<TrySendFinishedWebOrder> for ConnectionHandlerActor {
+impl Handler<TrySendFinishedWebOrder> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: TrySendFinishedWebOrder, _ctx: &mut Context<Self>) -> Self::Result {

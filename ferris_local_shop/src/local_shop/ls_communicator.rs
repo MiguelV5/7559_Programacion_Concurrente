@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::connection_handler;
-use super::connection_handler::ConnectionHandlerActor;
+use super::connection_handler::ConnectionHandler;
 use super::constants::*;
 use crate::local_shop::ls_middleman::LSMiddleman;
 use actix::Actor;
@@ -22,7 +22,7 @@ use tracing::info;
 use tracing::trace;
 
 pub fn handle_connection_with_e_commerce(
-    connection_handler_addr: Addr<ConnectionHandlerActor>,
+    connection_handler_addr: Addr<ConnectionHandler>,
 ) -> JoinHandle<Result<(), String>> {
     actix::spawn(async move {
         loop {
@@ -53,7 +53,7 @@ pub fn handle_connection_with_e_commerce(
 
 async fn connect_to_e_commerce(
     port: u16,
-    connection_handler_addr: Addr<ConnectionHandlerActor>,
+    connection_handler_addr: Addr<ConnectionHandler>,
 ) -> Result<(), String> {
     let addr = format!("{}:{}", LOCALHOST, port);
     if let Ok(stream) = AsyncTcpStream::connect(addr.clone()).await {
@@ -94,7 +94,7 @@ async fn connect_to_e_commerce(
 
 async fn connect_to_leader_e_commerce(
     port: u16,
-    connection_handler_addr: Addr<ConnectionHandlerActor>,
+    connection_handler_addr: Addr<ConnectionHandler>,
 ) -> Result<(), String> {
     let addr = format!("{}:{}", LOCALHOST, port);
     if let Ok(stream) = AsyncTcpStream::connect(addr.clone()).await {

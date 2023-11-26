@@ -1,4 +1,4 @@
-use super::connection_handler::ConnectionHandlerActor;
+use super::connection_handler::ConnectionHandler;
 use crate::local_shop::connection_handler;
 use actix::prelude::*;
 use shared::model::constants::*;
@@ -22,10 +22,10 @@ impl fmt::Display for InputError {
 impl Error for InputError {}
 
 pub fn setup_input_listener(
-    data_receiver: Receiver<Addr<ConnectionHandlerActor>>,
+    rx_for_connection_handler_addr: Receiver<Addr<ConnectionHandler>>,
 ) -> JoinHandle<Result<(), InputError>> {
     std::thread::spawn(move || {
-        let order_handler = data_receiver
+        let connection_handler = rx_for_connection_handler_addr
             .recv()
             .map_err(|err| InputError::ReceivingDataError(err.to_string()))?;
         info!("[InputHandler] Input listener thread started");
@@ -34,21 +34,21 @@ pub fn setup_input_listener(
         while let Some(Ok(line)) = reader.next() {
             if line == EXIT_MSG {
                 info!("[InputHandler] Exit command received");
-                order_handler
+                connection_handler
                     .try_send(connection_handler::CloseSystem {})
                     .map_err(|err| InputError::SendError(err.to_string()))?;
                 break;
             } else if line == START_ORDERS_MSG {
                 info!("[InputHandler] Push command received");
-                order_handler
+                connection_handler
                     .try_send(connection_handler::StartUp {})
                     .map_err(|err| InputError::SendError(err.to_string()))?;
             } else if line == CLOSE_CONNECTION_MSG {
-                order_handler
+                connection_handler
                     .try_send(connection_handler::StopConnection {})
                     .map_err(|err| InputError::SendError(err.to_string()))?;
             } else if line == WAKE_UP_CONNECTION {
-                order_handler
+                connection_handler
                     .try_send(connection_handler::WakeUpConnection {})
                     .map_err(|err| InputError::SendError(err.to_string()))?;
             } else {

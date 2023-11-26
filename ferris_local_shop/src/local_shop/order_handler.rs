@@ -6,19 +6,19 @@ use shared::model::order::Order;
 use tracing::{error, info, trace};
 
 use super::{
-    connection_handler::{self, ConnectionHandlerActor},
-    order_worker::OrderWorkerActor,
+    connection_handler::{self, ConnectionHandler},
+    order_worker::OrderWorker,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct OrderWorkerStatus {
     id: usize,
-    worker_addr: Addr<OrderWorkerActor>,
+    worker_addr: Addr<OrderWorker>,
     given_order: Option<Order>,
 }
 
 impl OrderWorkerStatus {
-    fn new(id: usize, worker_addr: Addr<OrderWorkerActor>) -> Self {
+    fn new(id: usize, worker_addr: Addr<OrderWorker>) -> Self {
         Self {
             id,
             worker_addr,
@@ -28,14 +28,14 @@ impl OrderWorkerStatus {
 }
 
 #[derive(Debug)]
-pub struct OrderHandlerActor {
+pub struct OrderHandler {
     local_orders: Vec<Order>,
     web_orders: Vec<Order>,
     order_workers: HashMap<usize, OrderWorkerStatus>,
-    connection_handler: Option<Addr<ConnectionHandlerActor>>,
+    connection_handler: Option<Addr<ConnectionHandler>>,
 }
 
-impl OrderHandlerActor {
+impl OrderHandler {
     pub fn new(local_orders: Vec<Order>) -> Self {
         Self {
             local_orders,
@@ -87,7 +87,7 @@ impl OrderHandlerActor {
     }
 }
 
-impl Actor for OrderHandlerActor {
+impl Actor for OrderHandler {
     type Context = Context<Self>;
 }
 
@@ -95,7 +95,7 @@ impl Actor for OrderHandlerActor {
 #[rtype(result = "Result<(), String>")]
 pub struct StartUp {}
 
-impl Handler<StartUp> for OrderHandlerActor {
+impl Handler<StartUp> for OrderHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: StartUp, ctx: &mut Context<Self>) -> Self::Result {
@@ -109,10 +109,10 @@ impl Handler<StartUp> for OrderHandlerActor {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 pub struct AddNewOrderWorker {
-    pub worker_addr: Addr<OrderWorkerActor>,
+    pub worker_addr: Addr<OrderWorker>,
 }
 
-impl Handler<AddNewOrderWorker> for OrderHandlerActor {
+impl Handler<AddNewOrderWorker> for OrderHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: AddNewOrderWorker, _: &mut Context<Self>) -> Self::Result {
@@ -138,10 +138,10 @@ impl Handler<AddNewOrderWorker> for OrderHandlerActor {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 pub struct AddNewConnectionHandler {
-    pub connection_handler_addr: Addr<ConnectionHandlerActor>,
+    pub connection_handler_addr: Addr<ConnectionHandler>,
 }
 
-impl Handler<AddNewConnectionHandler> for OrderHandlerActor {
+impl Handler<AddNewConnectionHandler> for OrderHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: AddNewConnectionHandler, _: &mut Context<Self>) -> Self::Result {
@@ -157,7 +157,7 @@ pub struct AddNewWebOrder {
     pub order: Order,
 }
 
-impl Handler<AddNewWebOrder> for OrderHandlerActor {
+impl Handler<AddNewWebOrder> for OrderHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: AddNewWebOrder, ctx: &mut Context<Self>) -> Self::Result {
@@ -175,7 +175,7 @@ pub struct TryFindEmptyOrderWorker {
     curr_worker_id: usize,
 }
 
-impl Handler<TryFindEmptyOrderWorker> for OrderHandlerActor {
+impl Handler<TryFindEmptyOrderWorker> for OrderHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: TryFindEmptyOrderWorker, ctx: &mut Context<Self>) -> Self::Result {
@@ -211,7 +211,7 @@ pub struct SendOrder {
     worker_id: usize,
 }
 
-impl Handler<SendOrder> for OrderHandlerActor {
+impl Handler<SendOrder> for OrderHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SendOrder, _: &mut Context<Self>) -> Self::Result {
@@ -251,7 +251,7 @@ pub struct OrderCompleted {
     pub order: Order,
 }
 
-impl Handler<OrderCompleted> for OrderHandlerActor {
+impl Handler<OrderCompleted> for OrderHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: OrderCompleted, ctx: &mut Context<Self>) -> Self::Result {
@@ -294,7 +294,7 @@ pub struct OrderCancelled {
     pub order: Order,
 }
 
-impl Handler<OrderCancelled> for OrderHandlerActor {
+impl Handler<OrderCancelled> for OrderHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: OrderCancelled, ctx: &mut Context<Self>) -> Self::Result {
@@ -338,7 +338,7 @@ struct HandleFinishedOrder {
     was_finished: bool,
 }
 
-impl Handler<HandleFinishedOrder> for OrderHandlerActor {
+impl Handler<HandleFinishedOrder> for OrderHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: HandleFinishedOrder, _: &mut Context<Self>) -> Self::Result {

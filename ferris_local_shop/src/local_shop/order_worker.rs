@@ -5,17 +5,17 @@ use rand::Rng;
 use shared::model::{order::Order, stock_product::Product};
 use tracing::{error, info, trace};
 
-use super::{order_handler::OrderHandlerActor, stock_handler::StockHandlerActor};
+use super::{order_handler::OrderHandler, stock_handler::StockHandler};
 use crate::local_shop::{
     order_handler,
     stock_handler::{self},
 };
 
-pub struct OrderWorkerActor {
+pub struct OrderWorker {
     id: Option<usize>,
 
-    order_handler_addr: Addr<OrderHandlerActor>,
-    stock_handler_addr: Addr<StockHandlerActor>,
+    order_handler_addr: Addr<OrderHandler>,
+    stock_handler_addr: Addr<StockHandler>,
 
     curr_order: Option<Order>,
 
@@ -26,14 +26,14 @@ pub struct OrderWorkerActor {
     curr_asked_product: Option<Product>,
 }
 
-impl Actor for OrderWorkerActor {
+impl Actor for OrderWorker {
     type Context = Context<Self>;
 }
 
-impl OrderWorkerActor {
+impl OrderWorker {
     pub fn new(
-        order_handler_addr: Addr<OrderHandlerActor>,
-        stock_handler_addr: Addr<StockHandlerActor>,
+        order_handler_addr: Addr<OrderHandler>,
+        stock_handler_addr: Addr<StockHandler>,
     ) -> Self {
         Self {
             id: None,
@@ -66,7 +66,7 @@ pub struct StartUp {
     pub id: usize,
 }
 
-impl Handler<StartUp> for OrderWorkerActor {
+impl Handler<StartUp> for OrderWorker {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: StartUp, _: &mut Context<Self>) -> Self::Result {
@@ -82,7 +82,7 @@ pub struct WorkNewOrder {
     pub order: Order,
 }
 
-impl Handler<WorkNewOrder> for OrderWorkerActor {
+impl Handler<WorkNewOrder> for OrderWorker {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: WorkNewOrder, ctx: &mut Context<Self>) -> Self::Result {
@@ -125,7 +125,7 @@ pub struct StockProductGiven {
     pub product: Product,
 }
 
-impl Handler<StockProductGiven> for OrderWorkerActor {
+impl Handler<StockProductGiven> for OrderWorker {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: StockProductGiven, ctx: &mut Context<Self>) -> Self::Result {
@@ -170,7 +170,7 @@ impl Handler<StockProductGiven> for OrderWorkerActor {
 #[rtype(result = "Result<(), String>")]
 struct TrySendTakeProduct {}
 
-impl Handler<TrySendTakeProduct> for OrderWorkerActor {
+impl Handler<TrySendTakeProduct> for OrderWorker {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: TrySendTakeProduct, ctx: &mut Context<Self>) -> Self::Result {
@@ -214,7 +214,7 @@ impl Handler<TrySendTakeProduct> for OrderWorkerActor {
 #[rtype(result = "Result<(), String>")]
 pub struct StockProductReserved {}
 
-impl Handler<StockProductReserved> for OrderWorkerActor {
+impl Handler<StockProductReserved> for OrderWorker {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: StockProductReserved, ctx: &mut Context<Self>) -> Self::Result {
@@ -247,7 +247,7 @@ impl Handler<StockProductReserved> for OrderWorkerActor {
 #[rtype(result = "Result<(), String>")]
 struct TryReserveProduct {}
 
-impl Handler<TryReserveProduct> for OrderWorkerActor {
+impl Handler<TryReserveProduct> for OrderWorker {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: TryReserveProduct, ctx: &mut Context<Self>) -> Self::Result {
@@ -283,7 +283,7 @@ pub struct StockReservedProductGiven {
     pub product: Product,
 }
 
-impl Handler<StockReservedProductGiven> for OrderWorkerActor {
+impl Handler<StockReservedProductGiven> for OrderWorker {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: StockReservedProductGiven, ctx: &mut Context<Self>) -> Self::Result {
@@ -328,7 +328,7 @@ impl Handler<StockReservedProductGiven> for OrderWorkerActor {
 #[rtype(result = "Result<(), String>")]
 struct RandomTakeReservedProduct {}
 
-impl Handler<RandomTakeReservedProduct> for OrderWorkerActor {
+impl Handler<RandomTakeReservedProduct> for OrderWorker {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: RandomTakeReservedProduct, ctx: &mut Context<Self>) -> Self::Result {
@@ -386,7 +386,7 @@ impl Handler<RandomTakeReservedProduct> for OrderWorkerActor {
 #[rtype(result = "Result<(), String>")]
 pub struct StockNoProduct {}
 
-impl Handler<StockNoProduct> for OrderWorkerActor {
+impl Handler<StockNoProduct> for OrderWorker {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: StockNoProduct, ctx: &mut Context<Self>) -> Self::Result {
@@ -410,7 +410,7 @@ impl Handler<StockNoProduct> for OrderWorkerActor {
 #[rtype(result = "Result<(), String>")]
 struct SendReturningProduct {}
 
-impl Handler<SendReturningProduct> for OrderWorkerActor {
+impl Handler<SendReturningProduct> for OrderWorker {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: SendReturningProduct, ctx: &mut Context<Self>) -> Self::Result {
@@ -441,7 +441,7 @@ impl Handler<SendReturningProduct> for OrderWorkerActor {
 #[rtype(result = "Result<(), String>")]
 struct SendUnreserveProduct {}
 
-impl Handler<SendUnreserveProduct> for OrderWorkerActor {
+impl Handler<SendUnreserveProduct> for OrderWorker {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: SendUnreserveProduct, ctx: &mut Context<Self>) -> Self::Result {
@@ -483,7 +483,7 @@ impl Handler<SendUnreserveProduct> for OrderWorkerActor {
 #[rtype(result = "Result<(), String>")]
 struct CleanUp {}
 
-impl Handler<CleanUp> for OrderWorkerActor {
+impl Handler<CleanUp> for OrderWorker {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: CleanUp, _: &mut Context<Self>) -> Self::Result {
