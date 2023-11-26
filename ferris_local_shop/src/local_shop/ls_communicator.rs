@@ -86,7 +86,7 @@ async fn connect_to_e_commerce(
                 .map_err(|err| err.to_string())??;
             connect_to_leader_e_commerce(leader_addr, connection_handler_addr).await?;
         } else {
-            error!("[LSComminicator] Unexpected msg: {:?}", msg);
+            error!("[LSComminicator] Unexpected msg: {:?}.", msg);
         }
     }
     Ok(())

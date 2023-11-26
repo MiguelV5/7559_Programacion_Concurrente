@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use super::{db_middleman::DBMiddleman, stock_handler::StockHandler};
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ConnectionHandler {
     pub stock_handler: Addr<StockHandler>,
     pub last_local_id: u16,

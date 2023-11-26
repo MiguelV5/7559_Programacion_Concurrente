@@ -10,9 +10,6 @@ pub enum DBRequest {
         ecommerce_id: u16,
     },
     GetNewLocalId,
-    CheckLocalId {
-        local_id: u16,
-    },
     PostStockFromLocal {
         local_id: u16,
         stock: HashMap<String, Product>,
@@ -21,7 +18,6 @@ pub enum DBRequest {
         order: Order,
     },
     GetProductQuantityByLocalId {
-        local_id: u16,
         product_name: String,
     },
 }

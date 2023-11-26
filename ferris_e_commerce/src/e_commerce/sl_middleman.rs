@@ -43,6 +43,8 @@ impl Actor for SLMiddleman {
     type Context = Context<Self>;
 }
 
+//============================= Incoming Messages =============================//
+
 impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
@@ -68,7 +70,7 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
             self.connection_handler_addr
                 .do_send(RemoveSLMiddleman { id });
         } else {
-            debug!("[SLMiddleman] Connection finished from unknown local.")
+            trace!("[SLMiddleman] Connection finished from unknown local.")
         }
 
         ctx.stop();

@@ -160,13 +160,9 @@ impl Handler<AddOrderWorkerAddr> for ConnectionHandler {
     }
 }
 
-// ==========================================================================
-// ==========================================================================
-// ==========================================================================
-// SL Related Messages
-// ==========================================================================
-// ==========================================================================
-// ==========================================================================
+//===================================================================================//
+//============================= Server - Local Messages =============================//
+//===================================================================================//
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
@@ -178,9 +174,11 @@ impl Handler<AskLeaderMessage> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: AskLeaderMessage, _: &mut Self::Context) -> Self::Result {
-        info!("[ConnectionHandler] Sending e-commerce leader.");
-
         if let Some(leader_id) = self.leader_sl_id {
+            info!(
+                "[ConnectionHandler] Sending e-commerce leader: {}",
+                leader_id
+            );
             return msg
                 .sl_middleman_addr
                 .try_send(sl_middleman::SendOnlineMsg {
@@ -207,7 +205,7 @@ impl Handler<RegisterLocal> for ConnectionHandler {
     fn handle(&mut self, msg: RegisterLocal, _ctx: &mut Self::Context) -> Self::Result {
         info!("[ConnectionHandler] Registering new local.");
         self.db_middleman_addr
-            .try_send(db_middleman::SendGetNewLocalId {
+            .try_send(db_middleman::RequestGetNewLocalId {
                 requestor_sl_middleman: msg.sl_middleman_addr.clone(),
             })
             .map_err(|err| err.to_string())
@@ -216,21 +214,27 @@ impl Handler<RegisterLocal> for ConnectionHandler {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct SuccessfulRegisterFromDB {
+pub struct ResponseGetNewLocalId {
     pub sl_middleman_addr: Addr<SLMiddleman>,
     pub db_response_id: u16,
 }
 
-impl Handler<SuccessfulRegisterFromDB> for ConnectionHandler {
+impl Handler<ResponseGetNewLocalId> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: SuccessfulRegisterFromDB, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: ResponseGetNewLocalId, _ctx: &mut Self::Context) -> Self::Result {
         info!(
             "[ConnectionHandler] Got an assigned local id from DB: {}.",
             msg.db_response_id
         );
         self.sl_communicators
             .insert(msg.db_response_id, msg.sl_middleman_addr.clone());
+
+        msg.sl_middleman_addr
+            .try_send(SetUpId {
+                id: msg.db_response_id,
+            })
+            .map_err(|err| err.to_string())?;
 
         msg.sl_middleman_addr
             .try_send(sl_middleman::SendOnlineMsg {
@@ -243,16 +247,32 @@ impl Handler<SuccessfulRegisterFromDB> for ConnectionHandler {
             .map_err(|err| err.to_string())?;
 
         msg.sl_middleman_addr
-            .try_send(SetUpId {
-                id: msg.db_response_id,
-            })
-            .map_err(|err| err.to_string())?;
-
-        msg.sl_middleman_addr
             .try_send(sl_middleman::SendOnlineMsg {
                 msg_to_send: SLMessage::AskAllStock {}
                     .to_string()
                     .map_err(|err| err.to_string())?,
+            })
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct StockFromLocal {
+    pub sl_middleman_addr: Addr<SLMiddleman>,
+    pub local_id: u16,
+    pub stock: HashMap<String, Product>,
+}
+
+impl Handler<StockFromLocal> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: StockFromLocal, _: &mut Self::Context) -> Self::Result {
+        info!("[ConnectionHandler] Received all stock from a local.");
+        self.db_middleman_addr
+            .try_send(db_middleman::SendPostStockFromLocal {
+                local_id: msg.local_id,
+                stock: msg.stock,
             })
             .map_err(|err| err.to_string())
     }
@@ -274,61 +294,14 @@ impl Handler<LoginLocalMessage> for ConnectionHandler {
             msg.local_id
         );
 
-        self.db_middleman_addr
-            .try_send(db_middleman::SendCheckLocalId {
-                local_id: msg.local_id,
-                requestor_sl_middleman: msg.sl_middleman_addr.clone(),
-            })
-            .map_err(|err| err.to_string())
-    }
-}
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-pub struct SuccessfulLoginFromDB {
-    pub sl_middleman_addr: Addr<SLMiddleman>,
-    pub db_response_id: u16,
-}
-
-impl Handler<SuccessfulLoginFromDB> for ConnectionHandler {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, msg: SuccessfulLoginFromDB, _ctx: &mut Self::Context) -> Self::Result {
-        info!(
-            "[ConnectionHandler] Got OK from DB for login: [{}] .",
-            msg.db_response_id
-        );
         self.sl_communicators
-            .insert(msg.db_response_id, msg.sl_middleman_addr.clone());
+            .insert(msg.local_id, msg.sl_middleman_addr.clone());
+
         msg.sl_middleman_addr
             .try_send(sl_middleman::SendOnlineMsg {
                 msg_to_send: SLMessage::LocalSuccessfullyLoggedIn {}
                     .to_string()
                     .map_err(|err| err.to_string())?,
-            })
-            .map_err(|err| err.to_string())
-    }
-}
-
-// ==========================================================================
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-pub struct StockFromLocal {
-    pub sl_middleman_addr: Addr<SLMiddleman>,
-    pub local_id: u16,
-    pub stock: HashMap<String, Product>,
-}
-
-impl Handler<StockFromLocal> for ConnectionHandler {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, msg: StockFromLocal, _: &mut Self::Context) -> Self::Result {
-        info!("[ConnectionHandler] Received all stock from a local.");
-        self.db_middleman_addr
-            .try_send(db_middleman::SendPostStockFromLocal {
-                local_id: msg.local_id,
-                stock: msg.stock,
             })
             .map_err(|err| err.to_string())
     }
@@ -413,6 +386,10 @@ impl Handler<OrderCancelledFromLocal> for ConnectionHandler {
         }
     }
 }
+
+//=======================================================================//
+//============================= OrderWorker =============================//
+//=======================================================================//
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]

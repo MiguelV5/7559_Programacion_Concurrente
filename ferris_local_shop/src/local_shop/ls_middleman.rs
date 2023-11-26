@@ -39,6 +39,28 @@ impl LSMiddleman {
     }
 }
 
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct CloseConnection {}
+
+impl Handler<CloseConnection> for LSMiddleman {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: CloseConnection, ctx: &mut Context<Self>) -> Self::Result {
+        info!("[LSMiddleman] Closing connection.");
+        ctx.stop();
+        Ok(())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+struct HandleOnlineMsg {
+    received_msg: String,
+}
+
+//============================= Incoming Messages =============================//
+
 impl StreamHandler<Result<String, std::io::Error>> for LSMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
@@ -60,26 +82,6 @@ impl StreamHandler<Result<String, std::io::Error>> for LSMiddleman {
         self.connection_handler_addr.do_send(RemoveLSMiddleman {});
         ctx.stop();
     }
-}
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-pub struct CloseConnection {}
-
-impl Handler<CloseConnection> for LSMiddleman {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, _: CloseConnection, ctx: &mut Context<Self>) -> Self::Result {
-        info!("[LSMiddleman] Closing connection.");
-        ctx.stop();
-        Ok(())
-    }
-}
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-struct HandleOnlineMsg {
-    received_msg: String,
 }
 
 impl Handler<HandleOnlineMsg> for LSMiddleman {
@@ -203,6 +205,8 @@ impl Handler<HandleWorkNewOrderMessage> for LSMiddleman {
             .map_err(|err| err.to_string())
     }
 }
+
+//============================= Outcoming Messages =============================//
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]

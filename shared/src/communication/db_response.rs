@@ -1,23 +1,15 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum DBResponse {
-    Ok(DBResponseBody),
-    Error(String),
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub enum DBResponseBody {
     NewLocalId {
-        local_id: u16,
-    },
-    LocalIdOk {
         local_id: u16,
     },
     ProductQuantity {
         product_name: String,
-        quantity: u16,
-        requestor_id: u16,
+        product_quantity_by_local_id: HashMap<u16, u32>,
     },
 }
 

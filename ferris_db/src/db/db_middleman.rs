@@ -1,6 +1,6 @@
 use actix::{fut::wrap_future, prelude::*};
-use shared::communication::{db_request::DBRequest, db_response::DBResponse};
-use std::{net::SocketAddr, sync::Arc};
+use shared::communication::db_request::DBRequest;
+use std::sync::Arc;
 use tokio::{
     io::{AsyncWriteExt, WriteHalf},
     net::TcpStream,
@@ -88,15 +88,11 @@ impl Handler<HandleOnlineMsg> for DBMiddleman {
                 .connection_handler
                 .try_send(PostOrderResult { order })
                 .map_err(|err| err.to_string()),
-            DBRequest::GetProductQuantityByLocalId {
-                local_id,
-                product_name,
-            } => {
+            DBRequest::GetProductQuantityByLocalId { product_name } => {
                 let db_middleman_addr = ctx.address();
                 self.connection_handler
                     .try_send(GetProductQuantityByLocalId {
                         db_middleman_addr,
-                        local_id,
                         product_name,
                     })
                     .map_err(|err| err.to_string())
