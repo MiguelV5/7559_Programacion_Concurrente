@@ -251,14 +251,12 @@ pub struct RegisterLocal {
 impl Handler<RegisterLocal> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: RegisterLocal, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RegisterLocal, _: &mut Self::Context) -> Self::Result {
         if let Some(db_communicator) = &self.db_communicator {
             info!("[ConnectionHandler] Registering new local.");
             return db_communicator
-                .try_send(db_middleman::SendOnlineMsg {
-                    msg_to_send: DBRequest::GetNewLocalId {}
-                        .to_string()
-                        .map_err(|err| err.to_string())?,
+                .try_send(db_middleman::RequestGetNewLocalId {
+                    requestor_sl_middleman: msg.sl_middleman_addr,
                 })
                 .map_err(|err| err.to_string());
         }
