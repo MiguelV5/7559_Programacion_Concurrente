@@ -55,6 +55,16 @@ impl StockHandler {
                 .ok_or("Couldn't get local shop id from order")?;
             if let Some(local_shop_stock) = self.global_stock.get_mut(&local_shop_id) {
                 if let Some(product_in_local_shop_stock) = local_shop_stock.get_mut(&product_name) {
+                    if product_in_local_shop_stock.get_quantity() < product_quantity {
+                        error!(
+                            "Product {} from order result has quantity {} but local shop {}'s stock has quantity {}",
+                            product_name,
+                            product_quantity,
+                            local_shop_id,
+                            product_in_local_shop_stock.get_quantity()
+                        );
+                        return Err("Product quantity in local shop stock is less than order result product quantity".to_string());
+                    }
                     product_in_local_shop_stock.affect_quantity_with_value(-product_quantity);
                 } else {
                     error!(

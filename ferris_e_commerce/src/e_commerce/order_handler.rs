@@ -201,12 +201,13 @@ impl Handler<OrderCompleted> for OrderHandler {
             .order_workers
             .get_mut(&msg.worker_id)
             .ok_or("No worker with given id.")?;
-        if order_worker.given_order != Some(msg.order.clone()) {
+
+        if order_worker.given_order.is_none() {
             error!(
-                "[OrderHandler] Order completed from unknown OrderWorker: {:?}",
-                order_worker.given_order
+                "[OrderHandler] Order completed from worker that didn't have a given order: {:?}.",
+                msg.worker_id
             );
-            return Err("Order completed from unknown worker.".to_owned());
+            return Err("Order completed from worker that didn't have a given order.".to_owned());
         }
 
         info!(
@@ -239,12 +240,12 @@ impl Handler<OrderCancelled> for OrderHandler {
             .get_mut(&msg.worker_id)
             .ok_or("No worker with given id.")?;
 
-        if order_worker.given_order != Some(msg.order.clone()) {
+        if order_worker.given_order.is_none() {
             error!(
-                "[OrderHandler] Order cancelled from unknown OrderWorker: {:?}.",
-                order_worker.given_order
+                "[OrderHandler] Order cancelled from worker that didn't have a given order: {:?}.",
+                msg.worker_id
             );
-            return Err("Order cancelled from unknown OrderWorker.".to_owned());
+            return Err("Order cancelled from worker that didn't have a given order.".to_owned());
         }
 
         info!(

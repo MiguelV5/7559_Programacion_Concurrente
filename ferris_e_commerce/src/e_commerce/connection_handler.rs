@@ -12,7 +12,10 @@ use shared::{
 };
 use tracing::{error, info, warn};
 
-use crate::e_commerce::sl_middleman::{self, SetUpId};
+use crate::e_commerce::{
+    order_worker,
+    sl_middleman::{self, SetUpId},
+};
 
 use crate::e_commerce::ss_middleman;
 
@@ -530,11 +533,13 @@ impl Handler<OrderCompletedFromLocal> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: OrderCompletedFromLocal, ctx: &mut Self::Context) -> Self::Result {
-        ctx.address()
-            .try_send(WebOrderCompletedFromLocal {
-                order: msg.order.clone(),
-            })
-            .map_err(|err| err.to_string())?;
+        if msg.order.is_web() {
+            ctx.address()
+                .try_send(WebOrderCompletedFromLocal {
+                    order: msg.order.clone(),
+                })
+                .map_err(|err| err.to_string())?;
+        }
         ctx.address()
             .try_send(SendOrderResultToDataBase { order: msg.order })
             .map_err(|err| err.to_string())
@@ -599,7 +604,7 @@ impl Handler<WebOrderCancelledFromLocal> for ConnectionHandler {
 
         if msg.order.get_ss_id_web() == Some(self.my_ss_id) {
             info!(
-                "[ConnectionHandler] Order completed by local {:?}.",
+                "[ConnectionHandler] Order cancelled by local {:?}.",
                 msg.order.get_local_id()
             );
             ctx.address()
@@ -610,7 +615,7 @@ impl Handler<WebOrderCancelledFromLocal> for ConnectionHandler {
                 .map_err(|err| err.to_string())
         } else {
             info!(
-                "[ConnectionHandler] Redirecting order completed by local {:?}.",
+                "[ConnectionHandler] Redirecting order cancelled by local {:?}.",
                 msg.order.get_local_id()
             );
             ctx.address()
@@ -689,11 +694,24 @@ impl Handler<SendOrderResultToOrderWorker> for ConnectionHandler {
                 .get(&order_worker_id)
                 .ok_or_else(|| "OrderWorker not found.".to_string())?;
             info!(
-                "[ConnectionHandler] Sending order to OrderWorker {:?}.",
+                "[ConnectionHandler] Sending order result to OrderWorker: {:?}.",
                 order_worker_id
             );
-            //TODO
-            Ok(())
+            if let Some(order_worker) = self.order_workers.get(&order_worker_id) {
+                if msg.was_completed {
+                    order_worker
+                        .try_send(order_worker::OrderCompletedFromLocal { order: msg.order })
+                        .map_err(|err| err.to_string())?;
+                } else {
+                    order_worker
+                        .try_send(order_worker::OrderCancelledFromLocal { order: msg.order })
+                        .map_err(|err| err.to_string())?;
+                }
+                Ok(())
+            } else {
+                error!("[ConnectionHandler] OrderWorker not found.");
+                Err("OrderWorker not found.".to_string())
+            }
         } else {
             error!("[ConnectionHandler] OrderWorker not found.");
             Err("OrderWorker not found.".to_string())
@@ -765,11 +783,14 @@ impl Handler<HandlingCannotDispatchOrder> for ConnectionHandler {
                 worker_id,
                 msg.order.get_local_id().ok_or("No local id set")?
             );
-            if let Some(_) = self.order_workers.get(&worker_id) {
+            if let Some(order_worker) = self.order_workers.get(&worker_id) {
                 info!(
-                    "[ConnectionHandler] Sending order to OrderWorker {}.",
+                    "[ConnectionHandler] Giving order back to OrderWorker {}.",
                     worker_id
                 );
+                order_worker
+                    .try_send(order_worker::OrderNotTakenFromLocal {})
+                    .map_err(|err| err.to_string())?;
                 return Ok(());
             }
             error!("[ConnectionHandler] OrderWorker {} not found.", worker_id);
@@ -1068,12 +1089,19 @@ impl Handler<HandleSolvedAskForStockProductFromDB> for ConnectionHandler {
                 .map_err(|err| err.to_string());
         }
 
-        if let Some(_) = self.order_workers.get(&msg.worker_id) {
+        if let Some(order_worker) = self.order_workers.get(&msg.worker_id) {
             info!(
                 "[ConnectionHandler] Sending product quantity to OrderWorker {:?}.",
                 msg.worker_id
             );
-            return Ok(());
+            return order_worker
+                .try_send(order_worker::SolvedStockProductForOrderWorker {
+                    product_name: msg.product_name.clone(),
+                    stock: msg.stock,
+                    my_sl_id: self.my_sl_id,
+                    my_ss_id: self.my_ss_id,
+                })
+                .map_err(|err| err.to_string());
         }
         error!("[ConnectionHandler] OrderWorker not found to redirect asked stock.");
         Err("OrderWorker not found to redirect asked stock.".to_string())

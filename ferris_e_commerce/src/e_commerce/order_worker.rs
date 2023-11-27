@@ -203,12 +203,26 @@ impl Handler<OrderNotTakenFromLocal> for OrderWorker {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct OrderCompletedFromLocal {}
+pub struct OrderCompletedFromLocal {
+    pub order: Order,
+}
 
 impl Handler<OrderCompletedFromLocal> for OrderWorker {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, _msg: OrderCompletedFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: OrderCompletedFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
+        info!(
+            "[OrderWorker {:?}] Checking received order completed",
+            self.id
+        );
+        if self.curr_order != Some(msg.order) {
+            error!(
+                "[OrderWorker {:?}] Order completed from unknown local.",
+                self.id
+            );
+            return Err("Order completed from unknown local.".to_string());
+        }
+
         if let Some(Order::Web(current_order)) = &self.curr_order {
             info!(
                 "[OrderWorker {:?}] Order completed by local: [{:?}]",
@@ -222,6 +236,7 @@ impl Handler<OrderCompletedFromLocal> for OrderWorker {
                 })
                 .map_err(|err| err.to_string())?;
             self.curr_order = None;
+            self.cache_of_available_locals_for_curr_order.clear();
             return Ok(());
         }
         Err("Current order is empty.".to_string())
@@ -230,12 +245,26 @@ impl Handler<OrderCompletedFromLocal> for OrderWorker {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct OrderCancelledFromLocal {}
+pub struct OrderCancelledFromLocal {
+    pub order: Order,
+}
 
 impl Handler<OrderCancelledFromLocal> for OrderWorker {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, _msg: OrderCancelledFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: OrderCancelledFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
+        info!(
+            "[OrderWorker {:?}] Checking received order cancelled",
+            self.id
+        );
+        if self.curr_order != Some(msg.order) {
+            error!(
+                "[OrderWorker {:?}] Order cancelled doesn't match with current order.",
+                self.id
+            );
+            return Err("Order cancelled doesn't match with current order.".to_string());
+        }
+
         if let Some(Order::Web(current_order)) = &self.curr_order {
             info!(
                 "[OrderWorker {:?}] Order cancelled by local: [{:?}]. Retrying completely.",
@@ -248,7 +277,6 @@ impl Handler<OrderCancelledFromLocal> for OrderWorker {
                     worker_id: self.id,
                 })
                 .map_err(|err| err.to_string())?;
-            self.curr_order = None;
             self.cache_of_available_locals_for_curr_order.clear();
             return Ok(());
         }
