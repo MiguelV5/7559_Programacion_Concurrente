@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
 use actix_rt::System;
 use shared::communication::ls_message::LSMessage;
-use shared::model::order;
 use shared::model::{order::Order, stock_product::Product};
 use tokio::sync::mpsc::Sender;
 use tracing::{error, info, warn};
@@ -30,7 +29,7 @@ pub struct ConnectionHandler {
     stock_handler: Addr<StockHandler>,
     ls_middleman: Option<Addr<LSMiddleman>>,
 
-    tx_close_connection: Option<Sender<String>>,
+    tx_input_handler: Option<Sender<String>>,
 
     order_results_pending_to_report: Vec<(Order, bool)>,
 }
@@ -46,7 +45,7 @@ impl ConnectionHandler {
             stock_handler,
             ls_middleman: None,
 
-            tx_close_connection: None,
+            tx_input_handler: None,
 
             order_results_pending_to_report: Vec::new(),
         }
@@ -94,8 +93,8 @@ impl Handler<CloseSystem> for ConnectionHandler {
                     .try_send(CloseConnection {})
                     .map_err(|err| err.to_string())?;
             }
-            if let Some(tx_close_connection) = self.tx_close_connection.take() {
-                tx_close_connection
+            if let Some(tx_input_handler) = self.tx_input_handler.take() {
+                tx_input_handler
                     .try_send(WAKE_UP.to_string())
                     .map_err(|err| err.to_string())?;
             }
@@ -145,7 +144,7 @@ impl Handler<AddLSMiddleman> for ConnectionHandler {
     fn handle(&mut self, msg: AddLSMiddleman, _: &mut Context<Self>) -> Self::Result {
         info!("[ConnectionHandler] Adding new LsMiddleman.");
         self.ls_middleman = Some(msg.ls_middleman.clone());
-        self.tx_close_connection = Some(msg.tx_close_connection);
+        self.tx_input_handler = Some(msg.tx_close_connection);
         self.curr_sl_id = Some(msg.e_commerce_addr);
 
         msg.ls_middleman
@@ -202,7 +201,7 @@ impl Handler<LeaderMessage> for ConnectionHandler {
                 }
             }
             *curr_sl_id = msg.leader_sl_id;
-            if let Some(tx_close_connection) = &self.tx_close_connection {
+            if let Some(tx_close_connection) = &self.tx_input_handler {
                 tx_close_connection
                     .try_send(LEADER_ADRR.to_string())
                     .map_err(|err| err.to_string())?;
@@ -286,7 +285,7 @@ impl Handler<WakeUpConnection> for ConnectionHandler {
 
     fn handle(&mut self, _: WakeUpConnection, _: &mut Context<Self>) -> Self::Result {
         info!("[ConnectionHandler] Waking up connection.");
-        if let Some(tx_close_connection) = &self.tx_close_connection.take() {
+        if let Some(tx_close_connection) = &self.tx_input_handler.take() {
             tx_close_connection
                 .try_send(WAKE_UP.to_string())
                 .map_err(|err| err.to_string())?;
@@ -515,7 +514,7 @@ impl Handler<TrySendFinishedWebOrder> for ConnectionHandler {
             .ls_middleman
             .clone()
             .ok_or("Should not happen, the LSMiddleman must be set".to_string())?;
-        let mut message;
+        let message;
         if let Order::Web(_) = &msg.order {
             if msg.was_finished {
                 message = LSMessage::OrderCompleted { order: msg.order }

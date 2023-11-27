@@ -97,7 +97,7 @@ pub struct RemoveDBMiddleman {}
 impl Handler<RemoveDBMiddleman> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: RemoveDBMiddleman, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _: RemoveDBMiddleman, _: &mut Self::Context) -> Self::Result {
         info!("[ConnectionHandler] Removing DBMiddleman.");
         self.db_communicator = None;
         Ok(())
@@ -390,6 +390,27 @@ impl Handler<OrderCompletedFromLocal> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: OrderCompletedFromLocal, ctx: &mut Self::Context) -> Self::Result {
+        ctx.address()
+            .try_send(WebOrderCompletedFromLocal {
+                order: msg.order.clone(),
+            })
+            .map_err(|err| err.to_string())?;
+        ctx.address()
+            .try_send(SendOrderResultToDataBase { order: msg.order })
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct WebOrderCompletedFromLocal {
+    pub order: Order,
+}
+
+impl Handler<WebOrderCompletedFromLocal> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: WebOrderCompletedFromLocal, ctx: &mut Self::Context) -> Self::Result {
         if msg.order.is_web() {
             if msg.order.get_ss_id_web() == Some(self.my_ss_id) {
                 info!(
@@ -416,9 +437,8 @@ impl Handler<OrderCompletedFromLocal> for ConnectionHandler {
             }
         }
 
-        ctx.address()
-            .try_send(SendOrderResultToDataBase { order: msg.order })
-            .map_err(|err| err.to_string())
+        error!("[ConnectionHandler] Order is not web.");
+        Err("Order is not web.".to_string())
     }
 }
 
@@ -568,7 +588,7 @@ impl Handler<HandlingOrderDispatch> for ConnectionHandler {
             }
             return ctx
                 .address()
-                .try_send(CannotDispatchOrder {
+                .try_send(HandlingCannotDispatchOrder {
                     order: msg.order.clone(),
                 })
                 .map_err(|err| err.to_string());
@@ -584,20 +604,6 @@ impl Handler<HandlingOrderDispatch> for ConnectionHandler {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(),String>")]
-pub struct CannotDispatchOrder {
-    pub order: Order,
-}
-
-impl Handler<CannotDispatchOrder> for ConnectionHandler {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, msg: CannotDispatchOrder, _ctx: &mut Self::Context) -> Self::Result {
-        Ok(())
-    }
-}
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(),String>")]
 pub struct HandlingCannotDispatchOrder {
     pub order: Order,
 }
@@ -608,9 +614,67 @@ impl Handler<HandlingCannotDispatchOrder> for ConnectionHandler {
     fn handle(
         &mut self,
         msg: HandlingCannotDispatchOrder,
-        _ctx: &mut Self::Context,
+        ctx: &mut Self::Context,
     ) -> Self::Result {
-        Ok(())
+        if msg.order.get_ss_id_web() == Some(self.my_ss_id) {
+            let worker_id = msg.order.get_worker_id_web().ok_or("No worker id set")?;
+            info!(
+                "[ConnectionHandler] Order cannot be dispatched from worker {} to local {}.",
+                worker_id,
+                msg.order.get_local_id().ok_or("No local id set")?
+            );
+            if let Some(_) = self.order_workers.get(&worker_id) {
+                info!(
+                    "[ConnectionHandler] Sending order to OrderWorker {}.",
+                    worker_id
+                );
+                return Ok(());
+            }
+            error!("[ConnectionHandler] OrderWorker {} not found.", worker_id);
+        }
+
+        ctx.address()
+            .try_send(DelegateCannotDispatchOrderToLeader {
+                order: msg.order.clone(),
+            })
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(),String>")]
+pub struct DelegateCannotDispatchOrderToLeader {
+    pub order: Order,
+}
+
+impl Handler<DelegateCannotDispatchOrderToLeader> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(
+        &mut self,
+        msg: DelegateCannotDispatchOrderToLeader,
+        _: &mut Self::Context,
+    ) -> Self::Result {
+        if let Some(leader_ss_id) = self.leader_ss_id {
+            if let Some(leader_ss_middleman) = self.ss_communicators.get(&leader_ss_id) {
+                info!(
+                    "[ConnectionHandler] Delegating order not dispached to leader {}.",
+                    leader_ss_id
+                );
+                leader_ss_middleman
+                    .try_send(ss_middleman::SendOnlineMsg {
+                        msg_to_send: SSMessage::CannotDispatchPreviouslyDelegatedOrder {
+                            order: msg.order,
+                        }
+                        .to_string()
+                        .map_err(|err| err.to_string())?,
+                    })
+                    .map_err(|err| err.to_string())?;
+                return Ok(());
+            }
+        }
+        error!("[ConnectionHandler] No leader selected yet");
+        Err("No leader selected yet".to_string())
     }
 }
 
@@ -623,26 +687,26 @@ pub struct DelegateOrderToLeader {
 impl Handler<DelegateOrderToLeader> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: DelegateOrderToLeader, _ctx: &mut Self::Context) -> Self::Result {
-        Ok(())
-    }
-}
+    fn handle(&mut self, msg: DelegateOrderToLeader, _: &mut Self::Context) -> Self::Result {
+        if let Some(leader_ss_id) = self.leader_ss_id {
+            if let Some(leader_ss_middleman) = self.ss_communicators.get(&leader_ss_id) {
+                info!(
+                    "[ConnectionHandler] Delegating order to leader {}.",
+                    leader_ss_id
+                );
+                leader_ss_middleman
+                    .try_send(ss_middleman::SendOnlineMsg {
+                        msg_to_send: SSMessage::DelegateOrderToLeader { order: msg.order }
+                            .to_string()
+                            .map_err(|err| err.to_string())?,
+                    })
+                    .map_err(|err| err.to_string())?;
+                return Ok(());
+            }
+        }
 
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(),String>")]
-pub struct HandlingDelegatedOrderToLeader {
-    pub order: Order,
-}
-
-impl Handler<HandlingDelegatedOrderToLeader> for ConnectionHandler {
-    type Result = Result<(), String>;
-
-    fn handle(
-        &mut self,
-        msg: HandlingDelegatedOrderToLeader,
-        _ctx: &mut Self::Context,
-    ) -> Self::Result {
-        Ok(())
+        error!("[ConnectionHandler] No leader selected yet");
+        Err("No leader selected yet".to_string())
     }
 }
 
@@ -816,7 +880,7 @@ impl Handler<RedirectAskForStockProduct> for ConnectionHandler {
             if let Some(leader_ss_middleman) = self.ss_communicators.get(&leader_ss_id) {
                 leader_ss_middleman
                     .try_send(ss_middleman::SendOnlineMsg {
-                        msg_to_send: SSMessage::DelegateAskForStockProduct {
+                        msg_to_send: SSMessage::DelegateAskForStockProductToLeader {
                             requestor_ss_id: msg.requestor_ss_id,
                             requestor_worker_id: msg.requestor_worker_id,
                             product_name: msg.product_name.clone(),
@@ -835,25 +899,25 @@ impl Handler<RedirectAskForStockProduct> for ConnectionHandler {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct HandleSolvedAskForStockProduct {
+pub struct HandleSolvedAskForStockProductFromDB {
     pub ss_id: u16,
     pub worker_id: u16,
     pub product_name: String,
     pub stock: HashMap<u16, i32>,
 }
 
-impl Handler<HandleSolvedAskForStockProduct> for ConnectionHandler {
+impl Handler<HandleSolvedAskForStockProductFromDB> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(
         &mut self,
-        msg: HandleSolvedAskForStockProduct,
+        msg: HandleSolvedAskForStockProductFromDB,
         ctx: &mut Self::Context,
     ) -> Self::Result {
         if msg.ss_id != self.my_ss_id {
             return ctx
                 .address()
-                .try_send(RedirectProductQuantityFromDB {
+                .try_send(RedirectSolvedAskForStockProductFromDB {
                     ss_id: msg.ss_id,
                     worker_id: msg.worker_id,
                     product_name: msg.product_name.clone(),
@@ -876,19 +940,19 @@ impl Handler<HandleSolvedAskForStockProduct> for ConnectionHandler {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct RedirectProductQuantityFromDB {
+pub struct RedirectSolvedAskForStockProductFromDB {
     pub ss_id: u16,
     pub worker_id: u16,
     pub product_name: String,
     pub stock: HashMap<u16, i32>,
 }
 
-impl Handler<RedirectProductQuantityFromDB> for ConnectionHandler {
+impl Handler<RedirectSolvedAskForStockProductFromDB> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(
         &mut self,
-        msg: RedirectProductQuantityFromDB,
+        msg: RedirectSolvedAskForStockProductFromDB,
         _: &mut Self::Context,
     ) -> Self::Result {
         if let Some(leader_ss_id) = self.leader_ss_id {

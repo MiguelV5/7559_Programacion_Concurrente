@@ -1,6 +1,5 @@
 use super::connection_handler::{self, ConnectionHandler};
-use super::order_worker::OrderWorker;
-use super::{db_communicator, db_middleman, order_handler};
+use super::db_communicator;
 use super::{input_handler, order_handler::OrderHandler, sl_communicator, ss_communicator};
 use actix::prelude::*;
 use shared::{model::order::Order, parsers::orders_parser::OrdersParser};

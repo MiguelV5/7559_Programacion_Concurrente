@@ -29,7 +29,7 @@ pub enum SSMessage {
         leader_ss_id: u16,
         leader_sl_id: u16,
     },
-    DelegateAskForStockProduct {
+    DelegateAskForStockProductToLeader {
         requestor_ss_id: u16,
         requestor_worker_id: u16,
         product_name: String,
@@ -43,7 +43,7 @@ pub enum SSMessage {
     DelegateOrderToLeader {
         order: Order,
     },
-    CannotDispatchOrder {
+    CannotDispatchPreviouslyDelegatedOrder {
         order: Order,
     },
     SolvedPreviouslyDelegatedOrder {

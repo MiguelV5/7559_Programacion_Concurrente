@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use actix::fut::wrap_future;
@@ -15,7 +14,7 @@ use tracing::trace;
 
 use super::connection_handler;
 use super::connection_handler::ConnectionHandler;
-use super::connection_handler::HandleSolvedAskForStockProduct;
+use super::connection_handler::HandleSolvedAskForStockProductFromDB;
 use super::sl_middleman::SLMiddleman;
 
 pub struct DBMiddleman {
@@ -94,7 +93,7 @@ impl Handler<HandleOnlineMsg> for DBMiddleman {
                 product_quantity_by_local_id,
             } => {
                 self.connection_handler
-                    .try_send(HandleSolvedAskForStockProduct {
+                    .try_send(HandleSolvedAskForStockProductFromDB {
                         ss_id,
                         worker_id,
                         product_name,

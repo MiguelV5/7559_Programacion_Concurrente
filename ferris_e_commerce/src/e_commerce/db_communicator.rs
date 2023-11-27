@@ -17,7 +17,7 @@ use super::connection_handler::ConnectionHandler;
 pub async fn setup_db_connection(
     connection_handler: Addr<ConnectionHandler>,
 ) -> Result<Addr<DBMiddleman>, String> {
-    let addr = format!("{}", DATABASE_IP);
+    let addr = DATABASE_IP.to_string();
 
     let stream = AsyncTcpStream::connect(addr.clone())
         .await

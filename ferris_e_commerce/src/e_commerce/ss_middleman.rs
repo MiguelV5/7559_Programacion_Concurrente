@@ -6,7 +6,7 @@ use actix::{
 use actix::{ActorContext, Addr, AsyncContext};
 use shared::communication::ss_message::SSMessage;
 use shared::model::order::Order;
-use tracing::{error, info, trace};
+use tracing::{error, trace};
 
 use tokio::io::AsyncWriteExt;
 use tokio::io::WriteHalf;
@@ -16,8 +16,9 @@ use tokio::sync::Mutex;
 use crate::e_commerce::connection_handler::{CheckIfTheOneWhoClosedWasLeader, LeaderElection};
 
 use super::connection_handler::{
-    AskForStockProduct, ConnectionHandler, HandleSolvedAskForStockProduct, LeaderSelected,
-    OrderCancelledFromLocal, OrderCompletedFromLocal, RegisterSSMiddleman,
+    AskForStockProduct, ConnectionHandler, HandleSolvedAskForStockProductFromDB,
+    HandlingCannotDispatchOrder, HandlingOrderDispatch, LeaderSelected, OrderCancelledFromLocal,
+    RegisterSSMiddleman, WebOrderCompletedFromLocal,
 };
 
 pub struct SSMiddleman {
@@ -44,6 +45,10 @@ impl SSMiddleman {
 impl Actor for SSMiddleman {
     type Context = Context<Self>;
 }
+
+//=============================================================================//
+//============================= Incoming Messages =============================//
+//=============================================================================//
 
 impl StreamHandler<Result<String, std::io::Error>> for SSMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
@@ -84,67 +89,6 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
 
     fn handle(&mut self, msg: HandleOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
         match SSMessage::from_string(&msg.received_msg).map_err(|err| err.to_string())? {
-            SSMessage::ElectLeader { requestor_id: _ } => {
-                self.connection_handler
-                    .try_send(LeaderElection {})
-                    .map_err(|err| err.to_string())?;
-            }
-            SSMessage::SelectedLeader {
-                leader_ss_id,
-                leader_sl_id,
-            } => {
-                self.connection_handler
-                    .try_send(LeaderSelected {
-                        leader_ss_id,
-                        leader_sl_id,
-                    })
-                    .map_err(|err| err.to_string())?;
-            }
-            SSMessage::SolvedAskForStockProduct {
-                requestor_ss_id,
-                requestor_worker_id,
-                product_name,
-                stock,
-            } => {
-                self.connection_handler
-                    .try_send(HandleSolvedAskForStockProduct {
-                        ss_id: requestor_ss_id,
-                        worker_id: requestor_worker_id,
-                        product_name,
-                        stock,
-                    })
-                    .map_err(|err| err.to_string())?;
-            }
-            SSMessage::DelegateAskForStockProduct {
-                requestor_ss_id,
-                requestor_worker_id,
-                product_name,
-            } => {
-                self.connection_handler
-                    .try_send(AskForStockProduct {
-                        requestor_ss_id,
-                        requestor_worker_id,
-                        product_name,
-                    })
-                    .map_err(|err| err.to_string())?;
-            }
-            SSMessage::DelegateOrderToLeader { order } => {
-                info!("ORDER DELEGATED: {:?}", order);
-            }
-            SSMessage::CannotDispatchOrder { order } => {
-                info!("ORDER CANNOT BE DISPATCHED: {:?}", order);
-            }
-            SSMessage::SolvedPreviouslyDelegatedOrder {
-                order,
-                was_completed,
-            } => {
-                ctx.address()
-                    .try_send(HandleSolvedOrder {
-                        order,
-                        was_completed,
-                    })
-                    .map_err(|err| err.to_string())?;
-            }
             SSMessage::TakeMyId { ss_id, sl_id } => {
                 self.connected_server_ss_id = Some(ss_id);
                 self.connected_server_sl_id = Some(sl_id);
@@ -153,12 +97,73 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
                         ss_id,
                         ss_middleman_addr: ctx.address(),
                     })
-                    .map_err(|err| err.to_string())?;
+                    .map_err(|err| err.to_string())
             }
-        };
-        Ok(())
+            SSMessage::ElectLeader { requestor_id: _ } => self
+                .connection_handler
+                .try_send(LeaderElection {})
+                .map_err(|err| err.to_string()),
+            SSMessage::SelectedLeader {
+                leader_ss_id,
+                leader_sl_id,
+            } => self
+                .connection_handler
+                .try_send(LeaderSelected {
+                    leader_ss_id,
+                    leader_sl_id,
+                })
+                .map_err(|err| err.to_string()),
+            SSMessage::DelegateAskForStockProductToLeader {
+                requestor_ss_id,
+                requestor_worker_id,
+                product_name,
+            } => self
+                .connection_handler
+                .try_send(AskForStockProduct {
+                    requestor_ss_id,
+                    requestor_worker_id,
+                    product_name,
+                })
+                .map_err(|err| err.to_string()),
+            SSMessage::SolvedAskForStockProduct {
+                requestor_ss_id,
+                requestor_worker_id,
+                product_name,
+                stock,
+            } => self
+                .connection_handler
+                .try_send(HandleSolvedAskForStockProductFromDB {
+                    ss_id: requestor_ss_id,
+                    worker_id: requestor_worker_id,
+                    product_name,
+                    stock,
+                })
+                .map_err(|err| err.to_string()),
+            SSMessage::DelegateOrderToLeader { order } => self
+                .connection_handler
+                .try_send(HandlingOrderDispatch { order })
+                .map_err(|err| err.to_string()),
+            SSMessage::SolvedPreviouslyDelegatedOrder {
+                order,
+                was_completed,
+            } => ctx
+                .address()
+                .try_send(HandleSolvedOrder {
+                    order,
+                    was_completed,
+                })
+                .map_err(|err| err.to_string()),
+            SSMessage::CannotDispatchPreviouslyDelegatedOrder { order } => self
+                .connection_handler
+                .try_send(HandlingCannotDispatchOrder { order })
+                .map_err(|err| err.to_string()),
+        }
     }
 }
+
+//==============================================================================//
+//============================= Outcoming Messages =============================//
+//==============================================================================//
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
@@ -189,8 +194,6 @@ impl Handler<SendOnlineMsg> for SSMiddleman {
         Ok(())
     }
 }
-
-// ================================================================================
 
 #[derive(Message)]
 #[rtype(result = "Result<(),String>")]
@@ -304,7 +307,7 @@ impl Handler<HandleSolvedOrder> for SSMiddleman {
     fn handle(&mut self, msg: HandleSolvedOrder, _ctx: &mut Self::Context) -> Self::Result {
         if msg.was_completed {
             self.connection_handler
-                .try_send(OrderCompletedFromLocal { order: msg.order })
+                .try_send(WebOrderCompletedFromLocal { order: msg.order })
                 .map_err(|err| err.to_string())?;
         } else {
             self.connection_handler
