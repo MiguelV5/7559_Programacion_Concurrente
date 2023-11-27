@@ -1,9 +1,14 @@
 use std::collections::HashMap;
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
+use actix_rt::System;
 use shared::{
     communication::{db_request::DBRequest, sl_message::SLMessage, ss_message::SSMessage},
-    model::{order::Order, stock_product::Product},
+    model::{
+        constants::{EXIT_MSG, WAKE_UP_CONNECTION},
+        order::Order,
+        stock_product::Product,
+    },
 };
 use tracing::{error, info, warn};
 
@@ -22,7 +27,6 @@ use super::{
 pub struct ConnectionHandler {
     order_handler: Addr<OrderHandler>,
 
-    leader_election_running: bool,
     my_ss_id: u16,
     my_sl_id: u16,
     leader_ss_id: Option<u16>,
@@ -36,13 +40,15 @@ pub struct ConnectionHandler {
     db_communicator: Option<Addr<DBMiddleman>>,
 
     order_results_pending_to_redirect: HashMap<u16, Vec<(Order, bool)>>,
+
+    tx_ss_console: Option<tokio::sync::mpsc::Sender<String>>,
+    tx_sl_console: Option<tokio::sync::mpsc::Sender<String>>,
 }
 
 impl ConnectionHandler {
     pub fn new(orders_handler: Addr<OrderHandler>, ss_id: u16, sl_id: u16) -> Self {
         Self {
             order_handler: orders_handler,
-            leader_election_running: false,
 
             my_ss_id: ss_id,
             my_sl_id: sl_id,
@@ -58,6 +64,9 @@ impl ConnectionHandler {
             db_communicator: None,
 
             order_results_pending_to_redirect: HashMap::new(),
+
+            tx_ss_console: None,
+            tx_sl_console: None,
         }
     }
 }
@@ -144,7 +153,7 @@ impl Handler<RegisterSSMiddleman> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: RegisterSSMiddleman, ctx: &mut Self::Context) -> Self::Result {
-        info!("Registering new SS.");
+        info!("[ConnectionHandler] Registering new SS: {}", msg.ss_id);
         self.ss_communicators
             .insert(msg.ss_id, msg.ss_middleman_addr.clone());
         ctx.address()
@@ -189,8 +198,24 @@ impl Handler<RemoveSLMiddleman> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: RemoveSLMiddleman, _: &mut Self::Context) -> Self::Result {
-        info!("[ConnectionHandler] Removing middleman.");
+        info!("[ConnectionHandler] Removing SLMiddleman.");
         self.sl_communicators.remove(&msg.local_id);
+        Ok(())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct RemoveSSMiddleman {
+    pub ss_id: u16,
+}
+
+impl Handler<RemoveSSMiddleman> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: RemoveSSMiddleman, _: &mut Self::Context) -> Self::Result {
+        info!("[ConnectionHandler] Removing SSMiddleman {}.", msg.ss_id);
+        self.ss_communicators.remove(&msg.ss_id);
         Ok(())
     }
 }
@@ -209,6 +234,121 @@ impl Handler<AddOrderWorkerAddr> for ConnectionHandler {
         info!("[ConnectionHandler] Adding OrderWorker.");
         self.order_workers
             .insert(msg.order_worker_id, msg.order_worker_addr);
+    }
+}
+
+#[derive(Message, Debug)]
+#[rtype(result = "Result<(), String>")]
+pub struct StartUp {}
+
+impl Handler<StartUp> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _msg: StartUp, _: &mut Context<Self>) -> Self::Result {
+        info!("[ConnectionHandler] Starting up working web orders.");
+        self.order_handler
+            .try_send(order_handler::StartUp {})
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[derive(Message, Debug)]
+#[rtype(result = "Result<(), String>")]
+pub struct StopConnectionFromSL {
+    pub tx_sl: tokio::sync::mpsc::Sender<String>,
+}
+
+impl Handler<StopConnectionFromSL> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: StopConnectionFromSL, _: &mut Context<Self>) -> Self::Result {
+        info!("[ConnectionHandler] Stopping connection from SL.");
+        self.tx_sl_console = Some(msg.tx_sl);
+        for (_, sl_middleman) in self.sl_communicators.iter() {
+            sl_middleman
+                .try_send(sl_middleman::CloseConnection {})
+                .map_err(|err| err.to_string())?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Message, Debug)]
+#[rtype(result = "Result<(), String>")]
+pub struct StopConnectionFromSS {
+    pub tx_ss: tokio::sync::mpsc::Sender<String>,
+}
+
+impl Handler<StopConnectionFromSS> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: StopConnectionFromSS, _: &mut Context<Self>) -> Self::Result {
+        info!("[ConnectionHandler] Stopping connection from SS.");
+        self.tx_ss_console = Some(msg.tx_ss);
+        for (_, ss_middleman) in self.ss_communicators.iter() {
+            ss_middleman
+                .try_send(ss_middleman::CloseConnection {})
+                .map_err(|err| err.to_string())?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Message, Debug)]
+#[rtype(result = "Result<(), String>")]
+pub struct WakeUpConnection {}
+
+impl Handler<WakeUpConnection> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: WakeUpConnection, _: &mut Context<Self>) -> Self::Result {
+        info!("[ConnectionHandler] Trying to wake up connection.");
+
+        if let Some(tx_ss) = &self.tx_ss_console {
+            tx_ss
+                .try_send(WAKE_UP_CONNECTION.to_string())
+                .map_err(|err| err.to_string())?;
+            if let Some(tx_sl) = &self.tx_sl_console {
+                tx_sl
+                    .try_send(WAKE_UP_CONNECTION.to_string())
+                    .map_err(|err| err.to_string())?;
+                info!("[ConnectionHandler] Waking up connection.");
+                return Ok(());
+            }
+        }
+
+        warn!("[ConnectionHandler] Cannot wake up connection, connection is already up.");
+        Ok(())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct CloseSystem {}
+
+impl Handler<CloseSystem> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _: CloseSystem, _: &mut Context<Self>) -> Self::Result {
+        if let Some(system) = System::try_current() {
+            info!("[ConnectionHandler] Closing system.");
+
+            if let Some(tx_ss) = &self.tx_ss_console {
+                tx_ss
+                    .try_send(EXIT_MSG.to_string())
+                    .map_err(|err| err.to_string())?;
+            }
+            if let Some(tx_sl) = &self.tx_sl_console {
+                tx_sl
+                    .try_send(EXIT_MSG.to_string())
+                    .map_err(|err| err.to_string())?;
+            }
+
+            system.stop();
+            return Ok(());
+        }
+        error!("[ConnectionHandler] Error closing system, cannot take current system.");
+        Err("Error closing system.".to_owned())
     }
 }
 
@@ -411,49 +551,50 @@ impl Handler<WebOrderCompletedFromLocal> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: WebOrderCompletedFromLocal, ctx: &mut Self::Context) -> Self::Result {
-        if msg.order.is_web() {
-            if msg.order.get_ss_id_web() == Some(self.my_ss_id) {
-                info!(
-                    "[ConnectionHandler] Order completed by local {:?}.",
-                    msg.order.get_local_id()
-                );
-                ctx.address()
-                    .try_send(SendOrderResultToOrderWorker {
-                        order: msg.order.clone(),
-                        was_completed: true,
-                    })
-                    .map_err(|err| err.to_string())?;
-            } else {
-                info!(
-                    "[ConnectionHandler] Redirecting order completed by local {:?}.",
-                    msg.order.get_local_id()
-                );
-                ctx.address()
-                    .try_send(SendOrderResultToOtherServer {
-                        order: msg.order.clone(),
-                        was_completed: true,
-                    })
-                    .map_err(|err| err.to_string())?;
-            }
+        if msg.order.is_local() {
+            error!("[ConnectionHandler] Order is not web.");
+            return Err("Order is not web.".to_string());
         }
 
-        error!("[ConnectionHandler] Order is not web.");
-        Err("Order is not web.".to_string())
+        if msg.order.get_ss_id_web() == Some(self.my_ss_id) {
+            info!(
+                "[ConnectionHandler] Order completed by local {:?}.",
+                msg.order.get_local_id()
+            );
+            ctx.address()
+                .try_send(SendOrderResultToOrderWorker {
+                    order: msg.order.clone(),
+                    was_completed: true,
+                })
+                .map_err(|err| err.to_string())
+        } else {
+            info!(
+                "[ConnectionHandler] Redirecting order completed by local {:?}.",
+                msg.order.get_local_id()
+            );
+            ctx.address()
+                .try_send(SendOrderResultToOtherServer {
+                    order: msg.order.clone(),
+                    was_completed: true,
+                })
+                .map_err(|err| err.to_string())
+        }
     }
 }
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct OrderCancelledFromLocal {
+pub struct WebOrderCancelledFromLocal {
     pub order: Order,
 }
 
-impl Handler<OrderCancelledFromLocal> for ConnectionHandler {
+impl Handler<WebOrderCancelledFromLocal> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: OrderCancelledFromLocal, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: WebOrderCancelledFromLocal, ctx: &mut Self::Context) -> Self::Result {
         if msg.order.is_local() {
-            return Err("Order cancelled from local.".to_string());
+            error!("[ConnectionHandler] Order is not web.");
+            return Err("Order is not web.".to_string());
         }
 
         if msg.order.get_ss_id_web() == Some(self.my_ss_id) {
@@ -551,6 +692,7 @@ impl Handler<SendOrderResultToOrderWorker> for ConnectionHandler {
                 "[ConnectionHandler] Sending order to OrderWorker {:?}.",
                 order_worker_id
             );
+            //TODO
             Ok(())
         } else {
             error!("[ConnectionHandler] OrderWorker not found.");
@@ -892,7 +1034,7 @@ impl Handler<RedirectAskForStockProduct> for ConnectionHandler {
                 return Ok(());
             }
         }
-        error!("[ConnectionHandler] No leader selected yet");
+        error!("[ConnectionHandler] No leader selected yet.");
         Err("No leader selected yet".to_string())
     }
 }
@@ -989,7 +1131,7 @@ impl Handler<LeaderElection> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _msg: LeaderElection, _ctx: &mut Self::Context) -> Self::Result {
-        warn!("LeaderElection message received");
+        warn!("[ConnectionHandler] LeaderElection message received");
 
         if let Some(max_ss_id) = self.ss_communicators.keys().max() {
             if max_ss_id > &self.my_ss_id {
@@ -1006,9 +1148,9 @@ impl Handler<LeaderElection> for ConnectionHandler {
             }
         };
 
-        info!("I'm the new leader [{}]", self.my_ss_id);
+        info!("[ConnectionHandler] I'm the new leader [{}]", self.my_ss_id);
         for (server_id, ss_middleman) in self.ss_communicators.iter() {
-            info!("Notifying server {}", server_id);
+            info!("[ConnectionHandler] Notifying server {}", server_id);
             ss_middleman
                 .try_send(ss_middleman::SendSelectedLeader {
                     my_ss_id: self.my_ss_id,
@@ -1034,13 +1176,12 @@ impl Handler<LeaderSelected> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: LeaderSelected, _ctx: &mut Self::Context) -> Self::Result {
+        info!(
+            "[ConnectionHandler] New leader selected: {}",
+            msg.leader_ss_id
+        );
         self.leader_ss_id = Some(msg.leader_ss_id);
         self.leader_sl_id = Some(msg.leader_sl_id);
-        self.leader_election_running = false;
-        self.order_handler
-            .try_send(order_handler::LeaderIsReady {})
-            .map_err(|err| err.to_string())?;
-        // TODO: Manejar el input de start desde el ConnectionHandler, con lo cual esto ultimo sobra
 
         for sl_middleman in self.sl_communicators.values() {
             sl_middleman
@@ -1100,7 +1241,7 @@ impl Handler<CheckIfTheOneWhoClosedWasLeader> for ConnectionHandler {
             };
             self.leader_ss_id = Some(self.my_ss_id);
             self.leader_sl_id = Some(self.my_sl_id);
-            info!("I'm the new leader [{}]", self.my_ss_id);
+            info!("[ConnectionHandler] I'm the new leader [{}]", self.my_ss_id);
         }
         Ok(())
     }

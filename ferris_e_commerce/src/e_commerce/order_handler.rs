@@ -53,8 +53,7 @@ impl OrderHandler {
         for order in received_orders {
             if let Order::Web(web_order) = order {
                 for product in &web_order.get_products() {
-                    let mut new_products = Vec::new();
-                    new_products.push(product.clone());
+                    let new_products = vec![product.clone()];
                     new_orders.push(Order::Web(WebOrder::new(new_products)));
                 }
             }

@@ -158,7 +158,7 @@ pub struct OrderNotTakenFromLocal {}
 impl Handler<OrderNotTakenFromLocal> for OrderWorker {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: OrderNotTakenFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: OrderNotTakenFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(Order::Web(current_order)) = self.curr_order.as_mut() {
             if self.cache_of_available_locals_for_curr_order.is_empty() {
                 info!(
@@ -208,12 +208,12 @@ pub struct OrderCompletedFromLocal {}
 impl Handler<OrderCompletedFromLocal> for OrderWorker {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: OrderCompletedFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: OrderCompletedFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(Order::Web(current_order)) = &self.curr_order {
             info!(
                 "[OrderWorker {:?}] Order completed by local: [{:?}]",
                 self.id,
-                self.curr_order.ok_or("")?.get_local_id()
+                self.curr_order.as_ref().ok_or("")?.get_local_id()
             );
             self.order_handler
                 .try_send(order_handler::OrderCompleted {
@@ -235,12 +235,12 @@ pub struct OrderCancelledFromLocal {}
 impl Handler<OrderCancelledFromLocal> for OrderWorker {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: OrderCancelledFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: OrderCancelledFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(Order::Web(current_order)) = &self.curr_order {
             info!(
                 "[OrderWorker {:?}] Order cancelled by local: [{:?}]. Retrying completely.",
                 self.id,
-                self.curr_order.ok_or("")?.get_local_id()
+                self.curr_order.as_ref().ok_or("")?.get_local_id()
             );
             self.connection_handler
                 .try_send(connection_handler::AskForStockProductFromOrderWorker {
