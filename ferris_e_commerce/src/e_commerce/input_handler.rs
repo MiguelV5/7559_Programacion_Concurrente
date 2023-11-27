@@ -39,9 +39,7 @@ pub fn setup_input_listener(
                 break;
             } else if line == START_ORDERS_MSG {
                 info!("Push command received");
-                if let Ok(_send_res) =
-                    order_pusher.try_send(super::order_handler::SendFirstOrders {})
-                {
+                if let Ok(_send_res) = order_pusher.try_send(super::order_handler::StartUp {}) {
                     info!("PushOrders message sent successfully");
                 } else {
                     info!("Error sending PushOrders message");

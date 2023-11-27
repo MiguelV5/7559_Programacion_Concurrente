@@ -4,13 +4,29 @@ use actix::{Actor, Addr, Context, Handler, Message};
 use shared::model::order::Order;
 use tracing::{info, warn};
 
-use crate::e_commerce::order_worker;
-
 use super::order_worker::OrderWorker;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OrderWorkerStatus {
+    id: u16,
+    worker_addr: Addr<OrderWorker>,
+    given_order: Option<Order>,
+}
+
+impl OrderWorkerStatus {
+    fn new(id: u16, worker_addr: Addr<OrderWorker>) -> Self {
+        Self {
+            id,
+            worker_addr,
+            given_order: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderHandler {
     orders: Vec<Order>,
-    order_workers: HashMap<u32, Addr<OrderWorker>>,
+    order_workers: HashMap<u16, OrderWorkerStatus>,
     is_leader_ready: bool,
 }
 
@@ -31,37 +47,16 @@ impl OrderHandler {
             is_leader_ready: false,
         }
     }
-}
 
-#[derive(Message)]
-#[rtype(result = "Result<(),String>")]
-pub struct SendFirstOrders {}
-
-impl Handler<SendFirstOrders> for OrderHandler {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, _msg: SendFirstOrders, _ctx: &mut Self::Context) -> Self::Result {
-        info!("PushOrders message received");
-        if self.is_leader_ready {
-            for order_worker in self.order_workers.values() {
-                if let Some(order) = self.orders.pop() {
-                    order_worker
-                        .try_send(order_worker::WorkNewOrder { order })
-                        .map_err(|err| err.to_string())?;
-                } else {
-                    warn!("No more orders to send, finishing");
-                    break;
-                }
-            }
-        }
-        Ok(())
+    pub fn get_order(&mut self) -> Option<Order> {
+        self.orders.pop()
     }
 }
 
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct AddOrderWorkerAddr {
-    pub id: u32,
+    pub order_worker_id: u16,
     pub order_worker_addr: Addr<OrderWorker>,
 }
 
@@ -69,7 +64,10 @@ impl Handler<AddOrderWorkerAddr> for OrderHandler {
     type Result = ();
 
     fn handle(&mut self, msg: AddOrderWorkerAddr, _ctx: &mut Self::Context) -> Self::Result {
-        self.order_workers.insert(msg.id, msg.order_worker_addr);
+        let order_worker_status =
+            OrderWorkerStatus::new(msg.order_worker_id, msg.order_worker_addr);
+        self.order_workers
+            .insert(msg.order_worker_id, order_worker_status);
     }
 }
 
@@ -82,5 +80,21 @@ impl Handler<LeaderIsReady> for OrderHandler {
 
     fn handle(&mut self, _msg: LeaderIsReady, _ctx: &mut Self::Context) -> Self::Result {
         self.is_leader_ready = true;
+    }
+}
+
+// ==========================================================================
+
+#[derive(Message)]
+#[rtype(result = "Result<(),String>")]
+pub struct StartUp {}
+
+impl Handler<StartUp> for OrderHandler {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, _msg: StartUp, _ctx: &mut Self::Context) -> Self::Result {
+        info!("OrderHandler starting up.");
+
+        Ok(())
     }
 }

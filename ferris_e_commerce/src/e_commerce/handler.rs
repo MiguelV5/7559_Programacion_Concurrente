@@ -112,18 +112,21 @@ async fn start_actors(
         })
         .await??;
 
-    // let order_worker = OrderWorker::new(1, connection_handler.clone()).start();
-    // order_handler
-    //     .send(order_handler::AddOrderWorkerAddr {
-    //         id: 1,
-    //         order_worker_addr: order_worker.clone(),
-    //     })
-    //     .await?;
-    // connection_handler
-    //     .send(connection_handler::AddOrderWorkerAddr {
-    //         order_worker_addr: order_worker.clone(),
-    //     })
-    //     .await?;
+    for order_worker_id in 1..4 {
+        let order_worker = OrderWorker::new(order_worker_id, connection_handler.clone()).start();
+        order_handler
+            .send(order_handler::AddOrderWorkerAddr {
+                order_worker_id: order_worker_id as u16,
+                order_worker_addr: order_worker.clone(),
+            })
+            .await?;
+        connection_handler
+            .send(connection_handler::AddOrderWorkerAddr {
+                order_worker_id: order_worker_id as u16,
+                order_worker_addr: order_worker.clone(),
+            })
+            .await?;
+    }
 
     Ok((order_handler, connection_handler))
 }
