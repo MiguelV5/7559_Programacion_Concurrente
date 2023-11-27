@@ -94,7 +94,7 @@ async fn start_async(
         .map_err(|_| "Error sending tx_to_ss")?;
 
     let (res_local_setup, res_sv_setup) = join!(locals_handle, servers_handle);
-    res_local_setup.map_err(|_| "Error joining locals_handle")?;
+    res_local_setup.map_err(|_| "Error joining locals_handle")??;
     res_sv_setup.map_err(|_| "Error joining servers_handle")??;
 
     Ok(())
@@ -114,17 +114,22 @@ async fn start_actors(
         })
         .await??;
 
-    for order_worker_id in 1..4 {
-        let order_worker = OrderWorker::new(order_worker_id, connection_handler.clone()).start();
+    for order_worker_id in 0..3 {
+        let order_worker = OrderWorker::new(
+            order_worker_id,
+            order_handler.clone(),
+            connection_handler.clone(),
+        )
+        .start();
         order_handler
             .send(order_handler::AddOrderWorkerAddr {
-                order_worker_id: order_worker_id as u16,
+                order_worker_id,
                 order_worker_addr: order_worker.clone(),
             })
             .await?;
         connection_handler
             .send(connection_handler::AddOrderWorkerAddr {
-                order_worker_id: order_worker_id as u16,
+                order_worker_id,
                 order_worker_addr: order_worker.clone(),
             })
             .await?;

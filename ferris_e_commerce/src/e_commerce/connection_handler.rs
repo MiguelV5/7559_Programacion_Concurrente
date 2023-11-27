@@ -244,7 +244,7 @@ pub struct StartUp {}
 impl Handler<StartUp> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: StartUp, _: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: StartUp, _: &mut Context<Self>) -> Self::Result {
         info!("[ConnectionHandler] Starting up working web orders.");
         self.order_handler
             .try_send(order_handler::StartUp {})
@@ -1182,10 +1182,6 @@ impl Handler<LeaderSelected> for ConnectionHandler {
         );
         self.leader_ss_id = Some(msg.leader_ss_id);
         self.leader_sl_id = Some(msg.leader_sl_id);
-        self.order_handler
-            .try_send(order_handler::LeaderIsReady {})
-            .map_err(|err| err.to_string())?;
-        // TODO: Manejar el input de start desde el ConnectionHandler, con lo cual esto ultimo sobra
 
         for sl_middleman in self.sl_communicators.values() {
             sl_middleman

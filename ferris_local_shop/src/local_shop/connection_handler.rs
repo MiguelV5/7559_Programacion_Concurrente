@@ -261,7 +261,7 @@ pub struct StopConnection {}
 impl Handler<StopConnection> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: StopConnection, _: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: StopConnection, _: &mut Context<Self>) -> Self::Result {
         if let Some(ls_middleman) = self.ls_middleman.take() {
             self.curr_sl_id = None;
             ls_middleman
