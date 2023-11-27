@@ -1,5 +1,6 @@
 use super::connection_handler::{self, ConnectionHandler};
 use super::db_communicator;
+use super::order_worker::OrderWorker;
 use super::{input_handler, order_handler::OrderHandler, sl_communicator, ss_communicator};
 use actix::prelude::*;
 use shared::{model::order::Order, parsers::orders_parser::OrdersParser};
@@ -112,8 +113,13 @@ async fn start_actors(
         })
         .await??;
 
-    for order_worker_id in 1..4 {
-        let order_worker = OrderWorker::new(order_worker_id, connection_handler.clone()).start();
+    for order_worker_id in 0..3 {
+        let order_worker = OrderWorker::new(
+            order_worker_id,
+            order_handler.clone(),
+            connection_handler.clone(),
+        )
+        .start();
         order_handler
             .send(order_handler::AddOrderWorkerAddr {
                 order_worker_id: order_worker_id as u16,

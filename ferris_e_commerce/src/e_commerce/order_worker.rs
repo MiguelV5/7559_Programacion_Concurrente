@@ -2,19 +2,20 @@ use std::collections::HashMap;
 
 use actix::{Actor, Addr, Context, Handler, Message};
 use rand::Rng;
-use shared::model::{order::Order, stock_product::Product};
-use tracing::info;
+use shared::model::order::Order;
+use tracing::{error, info};
 
-use crate::e_commerce::connection_handler;
+use crate::e_commerce::{connection_handler, order_handler};
 
-use super::connection_handler::ConnectionHandler;
+use super::{connection_handler::ConnectionHandler, order_handler::OrderHandler};
 
 pub struct OrderWorker {
     id: u16,
+    order_handler: Addr<OrderHandler>,
     connection_handler: Addr<ConnectionHandler>,
 
     curr_order: Option<Order>,
-    remaining_products: Vec<Product>,
+    cache_of_available_locals_for_curr_order: Vec<u16>,
 }
 
 impl Actor for OrderWorker {
@@ -28,15 +29,15 @@ impl Actor for OrderWorker {
 impl OrderWorker {
     pub fn new(
         id: u16,
-        // order_handler: Addr<OrderHandler>,
+        order_handler: Addr<OrderHandler>,
         connection_handler: Addr<ConnectionHandler>,
     ) -> Self {
         Self {
             id,
-            // order_handler,
+            order_handler,
             connection_handler,
             curr_order: None,
-            remaining_products: Vec::new(),
+            cache_of_available_locals_for_curr_order: Vec::new(),
         }
     }
 }
@@ -57,10 +58,10 @@ impl Handler<WorkNewOrder> for OrderWorker {
             "[OrderWorker {:?}] Handling new order: {:?}",
             self.id, msg.order
         );
-        self.remaining_products = msg.order.get_products();
         self.curr_order = Some(msg.order.clone());
+        self.cache_of_available_locals_for_curr_order.clear();
 
-        for product in self.remaining_products.iter() {
+        for product in msg.order.get_products().iter() {
             self.connection_handler
                 .try_send(connection_handler::AskForStockProductFromOrderWorker {
                     product_name: product.get_name(),
@@ -77,6 +78,8 @@ impl Handler<WorkNewOrder> for OrderWorker {
 pub struct SolvedStockProductForOrderWorker {
     pub product_name: String,
     pub stock: HashMap<u16, i32>,
+    pub my_ss_id: u16,
+    pub my_sl_id: u16,
 }
 
 impl Handler<SolvedStockProductForOrderWorker> for OrderWorker {
@@ -92,7 +95,7 @@ impl Handler<SolvedStockProductForOrderWorker> for OrderWorker {
             self.id, msg.product_name
         );
 
-        if let Some(Order::Web(current_order)) = &self.curr_order {
+        if let Some(Order::Web(current_order)) = self.curr_order.as_mut() {
             let mut available_locals = Vec::new();
             let required_product_amount = current_order
                 .get_products()
@@ -112,14 +115,143 @@ impl Handler<SolvedStockProductForOrderWorker> for OrderWorker {
                     "[OrderWorker {:?}] No local has enough stock to complete order: [{:?}: {:?}].",
                     self.id, msg.product_name, required_product_amount
                 );
-                self.
+                self.order_handler
+                    .try_send(order_handler::OrderCancelled {
+                        worker_id: self.id,
+                        order: Order::Web(current_order.clone()),
+                    })
+                    .map_err(|err| err.to_string())?;
                 return Ok(());
             }
-            let closest_local_id = rand::thread_rng().gen_range(0..available_locals.len());
+
+            let closest_local = rand::thread_rng().gen_range(0..available_locals.len());
+            let closest_local_id = available_locals[closest_local];
+
+            current_order.set_local_id(closest_local_id);
+            current_order.set_worker_id(self.id);
+            current_order.set_ss_id(msg.my_ss_id);
+            current_order.set_sl_id(msg.my_sl_id);
+
+            available_locals.remove(closest_local);
+            self.cache_of_available_locals_for_curr_order = available_locals;
+
+            info!(
+                "[OrderWorker {:?}] Order assigned to local: [{:?}]",
+                self.id, closest_local_id
+            );
+            self.connection_handler
+                .try_send(connection_handler::WorkNewOrder {
+                    order: Order::Web(current_order.clone()),
+                })
+                .map_err(|err| err.to_string())
+        } else {
+            error!("[OrderWorker {:?}] No order to work on.", self.id);
+            Err("No order to work on.".to_string())
         }
+    }
+}
 
-        for (local_id, stock) in msg.stock.iter() {}
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct OrderNotTakenFromLocal {}
 
-        Ok(())
+impl Handler<OrderNotTakenFromLocal> for OrderWorker {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: OrderNotTakenFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
+        if let Some(Order::Web(current_order)) = self.curr_order.as_mut() {
+            if self.cache_of_available_locals_for_curr_order.is_empty() {
+                info!(
+                    "[OrderWorker {:?}] No local has enough stock to complete order: [{:?}: {:?}].",
+                    self.id,
+                    current_order.get_products()[0].get_name(),
+                    current_order.get_products()[0].get_quantity()
+                );
+                self.order_handler
+                    .try_send(order_handler::OrderCancelled {
+                        worker_id: self.id,
+                        order: Order::Web(current_order.clone()),
+                    })
+                    .map_err(|err| err.to_string())?;
+                return Ok(());
+            }
+
+            let new_closest_local = rand::thread_rng()
+                .gen_range(0..self.cache_of_available_locals_for_curr_order.len());
+            let new_closest_local_id =
+                self.cache_of_available_locals_for_curr_order[new_closest_local];
+
+            current_order.set_local_id(new_closest_local_id);
+
+            self.cache_of_available_locals_for_curr_order
+                .remove(new_closest_local);
+
+            info!(
+                "[OrderWorker {:?}] Order could not be taken by local. Trying with: [{:?}]",
+                self.id, new_closest_local_id,
+            );
+            self.connection_handler
+                .try_send(connection_handler::WorkNewOrder {
+                    order: Order::Web(current_order.clone()),
+                })
+                .map_err(|err| err.to_string())?;
+            return Ok(());
+        }
+        Err("Order not taken by local.".to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct OrderCompletedFromLocal {}
+
+impl Handler<OrderCompletedFromLocal> for OrderWorker {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: OrderCompletedFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
+        if let Some(Order::Web(current_order)) = &self.curr_order {
+            info!(
+                "[OrderWorker {:?}] Order completed by local: [{:?}]",
+                self.id,
+                self.curr_order.ok_or("")?.get_local_id()
+            );
+            self.order_handler
+                .try_send(order_handler::OrderCompleted {
+                    worker_id: self.id,
+                    order: Order::Web(current_order.clone()),
+                })
+                .map_err(|err| err.to_string())?;
+            self.curr_order = None;
+            return Ok(());
+        }
+        Err("Current order is empty.".to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct OrderCancelledFromLocal {}
+
+impl Handler<OrderCancelledFromLocal> for OrderWorker {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: OrderCancelledFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
+        if let Some(Order::Web(current_order)) = &self.curr_order {
+            info!(
+                "[OrderWorker {:?}] Order cancelled by local: [{:?}]. Retrying completely.",
+                self.id,
+                self.curr_order.ok_or("")?.get_local_id()
+            );
+            self.connection_handler
+                .try_send(connection_handler::AskForStockProductFromOrderWorker {
+                    product_name: current_order.get_products()[0].get_name(),
+                    worker_id: self.id,
+                })
+                .map_err(|err| err.to_string())?;
+            self.curr_order = None;
+            self.cache_of_available_locals_for_curr_order.clear();
+            return Ok(());
+        }
+        Err("Current order is empty.".to_string())
     }
 }

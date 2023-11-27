@@ -118,7 +118,7 @@ impl Handler<TryFindEmptyOrderWorker> for OrderHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: TryFindEmptyOrderWorker, ctx: &mut Context<Self>) -> Self::Result {
-        if msg.curr_worker_id as usize >= self.order_workers.len() {
+        if usize::from(msg.curr_worker_id) >= self.order_workers.len() {
             return Ok(());
         }
 
@@ -154,40 +154,43 @@ impl Handler<SendOrderToWorker> for OrderHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SendOrderToWorker, _: &mut Context<Self>) -> Self::Result {
-        let order = self.get_order().ok_or("No more orders to send.")?;
+        if let Some(order) = self.get_order() {
+            let order_worker = self
+                .order_workers
+                .get_mut(&msg.worker_id)
+                .ok_or("No worker with given id.")?;
 
-        let order_worker = self
-            .order_workers
-            .get_mut(&msg.worker_id)
-            .ok_or("No worker with given id.")?;
-
-        info!(
-            "[OrderHandler] Sending to OrderWorker {:?} a new order: {:?}.",
-            msg.worker_id, order
-        );
-
-        if order_worker.given_order.is_some() {
-            error!(
-                "[OrderHandler] OrderWorker {:?} already has an order.",
-                order_worker.id
+            info!(
+                "[OrderHandler] Sending to OrderWorker {:?} a new order: {:?}.",
+                msg.worker_id, order
             );
-            return Err("Worker already has an order.".to_owned());
-        }
 
-        order_worker.given_order = Some(order.clone());
-        order_worker
-            .worker_addr
-            .try_send(order_worker::WorkNewOrder {
-                order: order.clone(),
-            })
-            .map_err(|err| err.to_string())
+            if order_worker.given_order.is_some() {
+                error!(
+                    "[OrderHandler] OrderWorker {:?} already has an order.",
+                    order_worker.id
+                );
+                return Err("Worker already has an order.".to_owned());
+            }
+
+            order_worker.given_order = Some(order.clone());
+            order_worker
+                .worker_addr
+                .try_send(order_worker::WorkNewOrder {
+                    order: order.clone(),
+                })
+                .map_err(|err| err.to_string())
+        } else {
+            info!("[OrderHandler] No more orders to send.");
+            Ok(())
+        }
     }
 }
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 pub struct OrderCompleted {
-    pub worker_id: usize,
+    pub worker_id: u16,
     pub order: Order,
 }
 
@@ -214,12 +217,6 @@ impl Handler<OrderCompleted> for OrderHandler {
         order_worker.given_order = None;
 
         ctx.address()
-            .try_send(HandleFinishedOrder {
-                order: msg.order,
-                was_finished: true,
-            })
-            .map_err(|err| err.to_string())?;
-        ctx.address()
             .try_send(SendOrderToWorker {
                 worker_id: order_worker.id,
             })
@@ -230,7 +227,7 @@ impl Handler<OrderCompleted> for OrderHandler {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 pub struct OrderCancelled {
-    pub worker_id: usize,
+    pub worker_id: u16,
     pub order: Order,
 }
 
@@ -258,62 +255,9 @@ impl Handler<OrderCancelled> for OrderHandler {
         order_worker.given_order = None;
 
         ctx.address()
-            .try_send(HandleFinishedOrder {
-                order: msg.order,
-                was_finished: false,
-            })
-            .map_err(|err| err.to_string())?;
-        ctx.address()
             .try_send(SendOrderToWorker {
                 worker_id: order_worker.id,
             })
             .map_err(|err| err.to_string())
-    }
-}
-
-#[derive(Message, Debug, PartialEq, Eq)]
-#[rtype(result = "Result<(), String>")]
-struct HandleFinishedOrder {
-    order: Order,
-    was_finished: bool,
-}
-
-impl Handler<HandleFinishedOrder> for OrderHandler {
-    type Result = Result<(), String>;
-
-    fn handle(&mut self, msg: HandleFinishedOrder, _: &mut Context<Self>) -> Self::Result {
-        trace!("[OrderHandler] Handling finished order: {:?}.", msg.order);
-        if let Order::Web(_) = msg.order {
-            if let Some(connection_handler) = &self.connection_handler {
-                connection_handler
-                    .try_send(connection_handler::TrySendFinishedOrder {
-                        order: msg.order,
-                        was_finished: msg.was_finished,
-                    })
-                    .map_err(|err| err.to_string())?;
-            } else {
-                error!("[OrderHandler] No connection handler.");
-            }
-            return Ok(());
-        }
-
-        if msg.was_finished {
-            trace!(
-                "[OrderHandler] Handling completed local order: {:?}.",
-                msg.order
-            );
-
-            if let Some(connection_handler) = &self.connection_handler {
-                connection_handler
-                    .try_send(connection_handler::TrySendFinishedOrder {
-                        order: msg.order,
-                        was_finished: msg.was_finished,
-                    })
-                    .map_err(|err| err.to_string())?;
-            } else {
-                error!("[OrderHandler] No connection handler.");
-            }
-        }
-        Ok(())
     }
 }
