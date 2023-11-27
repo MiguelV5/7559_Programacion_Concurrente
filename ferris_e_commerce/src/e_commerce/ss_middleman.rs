@@ -13,12 +13,14 @@ use tokio::io::WriteHalf;
 use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::Mutex;
 
-use crate::e_commerce::connection_handler::{CheckIfTheOneWhoClosedWasLeader, LeaderElection};
+use crate::e_commerce::connection_handler::{
+    CheckIfTheOneWhoClosedWasLeader, LeaderElection, RemoveSSMiddleman,
+};
 
 use super::connection_handler::{
     AskForStockProduct, ConnectionHandler, HandleSolvedAskForStockProductFromDB,
-    HandlingCannotDispatchOrder, HandlingOrderDispatch, LeaderSelected, OrderCancelledFromLocal,
-    RegisterSSMiddleman, WebOrderCompletedFromLocal,
+    HandlingCannotDispatchOrder, HandlingOrderDispatch, LeaderSelected, RegisterSSMiddleman,
+    WebOrderCancelledFromLocal, WebOrderCompletedFromLocal,
 };
 
 pub struct SSMiddleman {
@@ -44,6 +46,34 @@ impl SSMiddleman {
 
 impl Actor for SSMiddleman {
     type Context = Context<Self>;
+}
+
+//==================================================================//
+//============================= Set up =============================//
+//==================================================================//
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "()")]
+pub struct CloseConnection;
+
+impl Handler<CloseConnection> for SSMiddleman {
+    type Result = ();
+
+    fn handle(&mut self, _: CloseConnection, ctx: &mut Self::Context) -> Self::Result {
+        if let Some(ss_id) = self.connected_server_ss_id {
+            trace!(
+                "[SSMiddleman] Connection finished from server id {:?}.",
+                self.connected_server_ss_id.ok_or_else(|| {
+                    error!("[SSMiddleman] Error getting connected server id");
+                })
+            );
+            self.connection_handler.do_send(RemoveSSMiddleman { ss_id });
+        } else {
+            trace!("[SSMiddleman] Connection finished from unknown server.")
+        }
+
+        ctx.stop();
+    }
 }
 
 //=============================================================================//
@@ -311,7 +341,7 @@ impl Handler<HandleSolvedOrder> for SSMiddleman {
                 .map_err(|err| err.to_string())?;
         } else {
             self.connection_handler
-                .try_send(OrderCancelledFromLocal { order: msg.order })
+                .try_send(WebOrderCancelledFromLocal { order: msg.order })
                 .map_err(|err| err.to_string())?;
         }
         Ok(())

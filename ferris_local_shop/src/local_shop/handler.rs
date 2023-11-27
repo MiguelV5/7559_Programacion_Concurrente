@@ -1,23 +1,20 @@
-use std::{
-    collections::HashMap,
-    sync::mpsc::{channel, Sender},
-};
-
-use actix::{Actor, Addr, SyncArbiter};
-use actix_rt::System;
-use shared::{
-    model::{order::Order, stock_product::Product},
-    parsers::{orders_parser::OrdersParser, stock_parser::StockParser},
-};
-
-use crate::LocalShopError;
-
 use super::{
     connection_handler::ConnectionHandler,
     input_handler, ls_communicator,
     order_handler::{self, OrderHandler},
     order_worker::OrderWorker,
     stock_handler::StockHandler,
+};
+use crate::LocalShopError;
+use actix::{Actor, Addr, SyncArbiter};
+use actix_rt::System;
+use shared::{
+    model::{order::Order, stock_product::Product},
+    parsers::{orders_parser::OrdersParser, stock_parser::StockParser},
+};
+use std::{
+    collections::HashMap,
+    sync::mpsc::{channel, Sender},
 };
 
 pub fn start(

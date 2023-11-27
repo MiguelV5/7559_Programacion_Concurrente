@@ -27,6 +27,15 @@ pub fn handle_connection_with_e_commerce(
     actix::spawn(async move {
         loop {
             for curr_port in SL_INITIAL_PORT..SL_MAX_PORT + 1 {
+                let is_alive = connection_handler_addr
+                    .send(connection_handler::AskAlive {})
+                    .await
+                    .map_err(|err| err.to_string())?;
+
+                if !connection_handler_addr.connected() || !is_alive {
+                    trace!("[LSComminicator] Closing.");
+                    return Ok(());
+                }
                 if let Err(err) =
                     connect_to_e_commerce(curr_port, connection_handler_addr.clone()).await
                 {
@@ -36,15 +45,6 @@ pub fn handle_connection_with_e_commerce(
                         err
                     );
                 }
-            }
-            let is_alive = connection_handler_addr
-                .send(connection_handler::AskAlive {})
-                .await
-                .map_err(|err| err.to_string())?;
-
-            if !connection_handler_addr.connected() || !is_alive {
-                trace!("[LSComminicator] Closing.");
-                return Ok(());
             }
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
@@ -77,6 +77,7 @@ async fn connect_to_e_commerce(
             .map_err(|err| err.to_string())?;
 
         let msg = rx_close_connection.recv().await;
+
         if msg == Some(WAKE_UP.to_string()) {
             return Ok(());
         } else if msg == Some(LEADER_ADRR.to_string()) {

@@ -80,7 +80,7 @@ impl StreamHandler<Result<String, std::io::Error>> for LSMiddleman {
     }
 
     fn finished(&mut self, ctx: &mut Self::Context) {
-        trace!("[ONLINE RECEIVER LS] Connection closed");
+        trace!("[ONLINE RECEIVER LS] Connection closed.");
         self.connection_handler_addr.do_send(RemoveLSMiddleman {});
         ctx.stop();
     }

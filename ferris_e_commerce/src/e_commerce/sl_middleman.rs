@@ -16,14 +16,14 @@ use tracing::{error, trace};
 use crate::e_commerce::connection_handler::RemoveSLMiddleman;
 
 use super::connection_handler::{
-    AskLeaderMessage, ConnectionHandler, LoginLocalMessage, OrderCancelledFromLocal,
-    OrderCompletedFromLocal, RegisterLocal, StockFromLocal,
+    AskLeaderMessage, ConnectionHandler, LoginLocalMessage, OrderCompletedFromLocal, RegisterLocal,
+    StockFromLocal, WebOrderCancelledFromLocal,
 };
 
 pub struct SLMiddleman {
     pub local_id: Option<u16>,
     pub connected_local_shop_write_stream: Arc<Mutex<WriteHalf<AsyncTcpStream>>>,
-    pub connection_handler_addr: Addr<ConnectionHandler>,
+    pub connection_handler: Addr<ConnectionHandler>,
 }
 
 impl SLMiddleman {
@@ -34,7 +34,7 @@ impl SLMiddleman {
         Self {
             local_id: None,
             connected_local_shop_write_stream,
-            connection_handler_addr,
+            connection_handler: connection_handler_addr,
         }
     }
 }
@@ -60,7 +60,7 @@ impl Handler<CloseConnection> for SLMiddleman {
                 "[SLMiddleman] Connection finished from local id {:?}.",
                 self.local_id
             );
-            self.connection_handler_addr
+            self.connection_handler
                 .do_send(RemoveSLMiddleman { local_id });
         } else {
             trace!("[SLMiddleman] Connection finished from unknown local.")
@@ -96,7 +96,7 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
                 "[SLMiddleman] Connection finished from local id {:?}.",
                 self.local_id
             );
-            self.connection_handler_addr
+            self.connection_handler
                 .do_send(RemoveSLMiddleman { local_id: sl_id });
         } else {
             trace!("[SLMiddleman] Connection finished from unknown local.")
@@ -153,7 +153,7 @@ impl Handler<HandleAskLeaderMessage> for SLMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: HandleAskLeaderMessage, ctx: &mut Self::Context) -> Self::Result {
-        self.connection_handler_addr
+        self.connection_handler
             .try_send(AskLeaderMessage {
                 sl_middleman_addr: ctx.address(),
             })
@@ -177,7 +177,7 @@ impl Handler<HandleStockMessageFromLocal> for SLMiddleman {
         ctx: &mut Self::Context,
     ) -> Self::Result {
         if let Some(id) = self.local_id {
-            self.connection_handler_addr
+            self.connection_handler
                 .try_send(StockFromLocal {
                     sl_middleman_addr: ctx.address(),
                     local_id: id,
@@ -201,7 +201,7 @@ impl Handler<HandleRegisterLocalMessage> for SLMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: HandleRegisterLocalMessage, ctx: &mut Self::Context) -> Self::Result {
-        self.connection_handler_addr
+        self.connection_handler
             .try_send(RegisterLocal {
                 sl_middleman_addr: ctx.address(),
             })
@@ -220,7 +220,7 @@ impl Handler<HandleLoginLocalMessage> for SLMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: HandleLoginLocalMessage, ctx: &mut Self::Context) -> Self::Result {
-        self.connection_handler_addr
+        self.connection_handler
             .try_send(LoginLocalMessage {
                 sl_middleman_addr: ctx.address(),
                 local_id: msg.local_id,
@@ -254,7 +254,7 @@ impl Handler<HandleOrderCompletedMessage> for SLMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: HandleOrderCompletedMessage, _: &mut Self::Context) -> Self::Result {
-        self.connection_handler_addr
+        self.connection_handler
             .try_send(OrderCompletedFromLocal { order: msg.order })
             .map_err(|err| err.to_string())?;
         Ok(())
@@ -271,8 +271,8 @@ impl Handler<HandleOrderCancelledMessage> for SLMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: HandleOrderCancelledMessage, _: &mut Self::Context) -> Self::Result {
-        self.connection_handler_addr
-            .try_send(OrderCancelledFromLocal { order: msg.order })
+        self.connection_handler
+            .try_send(WebOrderCancelledFromLocal { order: msg.order })
             .map_err(|err| err.to_string())?;
         Ok(())
     }

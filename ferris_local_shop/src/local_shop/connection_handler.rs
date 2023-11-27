@@ -236,13 +236,16 @@ pub struct RemoveLSMiddleman {}
 impl Handler<RemoveLSMiddleman> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, _: RemoveLSMiddleman, ctx: &mut Context<Self>) -> Self::Result {
-        info!("[ConnectionHandler] Removing LsMiddleman.");
+    fn handle(&mut self, _: RemoveLSMiddleman, _: &mut Context<Self>) -> Self::Result {
+        info!("[ConnectionHandler] Removing LSMiddleman.");
         self.ls_middleman = None;
         self.curr_sl_id = None;
-        ctx.address()
-            .try_send(WakeUpConnection {})
-            .map_err(|err| err.to_string())?;
+        if let Some(tx_close_connection) = &self.tx_input_handler.take() {
+            tx_close_connection
+                .try_send(WAKE_UP.to_string())
+                .map_err(|err| err.to_string())?;
+            return Ok(());
+        }
         Ok(())
     }
 }
@@ -268,10 +271,7 @@ impl Handler<StopConnection> for ConnectionHandler {
             return Ok(());
         }
 
-        warn!(
-            "[ConnectionHandler] Cannot stop connection, no LsMiddleman found: {:?}.",
-            msg
-        );
+        warn!("[ConnectionHandler] Cannot stop connection, no LSMiddleman found.",);
         Ok(())
     }
 }
@@ -292,7 +292,7 @@ impl Handler<WakeUpConnection> for ConnectionHandler {
             return Ok(());
         }
 
-        warn!("[ConnectionHandler] Cannot wake up connection, connection is already up.");
+        warn!("[ConnectionHandler] Cannot wake up connection, not connection found.");
         Ok(())
     }
 }

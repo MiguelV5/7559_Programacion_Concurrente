@@ -2,10 +2,9 @@ use super::connection_handler::ConnectionHandler;
 use crate::local_shop::connection_handler;
 use actix::prelude::*;
 use shared::model::constants::*;
-use std::error::Error;
 use std::fmt;
-use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
+use std::{error::Error, sync::mpsc::Receiver};
 use tracing::{info, warn};
 
 #[derive(Debug)]
@@ -39,15 +38,17 @@ pub fn setup_input_listener(
                     .map_err(|err| InputError::SendError(err.to_string()))?;
                 break;
             } else if line == START_ORDERS_MSG {
-                info!("[InputHandler] Push command received");
+                info!("[InputHandler] Start command received");
                 connection_handler
                     .try_send(connection_handler::StartUp {})
                     .map_err(|err| InputError::SendError(err.to_string()))?;
             } else if line == CLOSE_CONNECTION_MSG {
+                info!("[InputHandler] Close connection command received");
                 connection_handler
                     .try_send(connection_handler::StopConnection {})
                     .map_err(|err| InputError::SendError(err.to_string()))?;
             } else if line == WAKE_UP_CONNECTION {
+                info!("[InputHandler] Restart connection command received");
                 connection_handler
                     .try_send(connection_handler::WakeUpConnection {})
                     .map_err(|err| InputError::SendError(err.to_string()))?;
