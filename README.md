@@ -39,7 +39,7 @@ Puede encontrar el enunciado [aquí](https://concurrentes-fiuba.github.io/2C2023
 ### E-commerce
 
 ```bash
-cargo run -p e_commerce -- -ss <servers_listening_port> -sl <locals_listening_port>  [-o <orders_file_path>]
+cargo run -p ferris_e_commerce -- -ss <servers_listening_port> -sl <locals_listening_port>  [-o <orders_file_path>]
 ```
 
 ### Local shop
@@ -68,9 +68,7 @@ Ambos a su vez proveen comandos para interactuar con el sistema durante la ejecu
     - `cc`: cierra la conexión con el e-commerce. El proceso sigue activo.
 	- `rc`: restaura la conexión con el e-commerce.
 
-## Tests
-
-Para correr los tests, ejecutar:
+### Tests
 
 ```bash
 cargo test
