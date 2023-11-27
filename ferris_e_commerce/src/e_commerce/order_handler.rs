@@ -212,7 +212,7 @@ impl Handler<OrderCompleted> for OrderHandler {
 
         info!(
             "[OrderHandler] Order completed from OrderWorker {:?}: {:?}",
-            order_worker.id, order_worker.given_order
+            order_worker.id, msg.order
         );
         order_worker.given_order = None;
 

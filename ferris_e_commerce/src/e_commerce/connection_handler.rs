@@ -818,13 +818,13 @@ impl Handler<DelegateCannotDispatchOrderToLeader> for ConnectionHandler {
         msg: DelegateCannotDispatchOrderToLeader,
         _: &mut Self::Context,
     ) -> Self::Result {
-        if let Some(leader_ss_id) = self.leader_ss_id {
-            if let Some(leader_ss_middleman) = self.ss_communicators.get(&leader_ss_id) {
+        if let Some(dest_ss_id) = msg.order.get_ss_id_web() {
+            if let Some(dest_ss_middleman) = self.ss_communicators.get(&dest_ss_id) {
                 info!(
                     "[ConnectionHandler] Delegating order not dispached to leader {}.",
-                    leader_ss_id
+                    dest_ss_id
                 );
-                leader_ss_middleman
+                dest_ss_middleman
                     .try_send(ss_middleman::SendOnlineMsg {
                         msg_to_send: SSMessage::CannotDispatchPreviouslyDelegatedOrder {
                             order: msg.order,
@@ -836,8 +836,9 @@ impl Handler<DelegateCannotDispatchOrderToLeader> for ConnectionHandler {
                 return Ok(());
             }
         }
-        error!("[ConnectionHandler] No leader selected yet");
-        Err("No leader selected yet".to_string())
+
+        error!("[ConnectionHandler] No server found.");
+        Err("No server found".to_string())
     }
 }
 
@@ -1125,25 +1126,28 @@ impl Handler<RedirectSolvedAskForStockProductFromDB> for ConnectionHandler {
         msg: RedirectSolvedAskForStockProductFromDB,
         _: &mut Self::Context,
     ) -> Self::Result {
-        if let Some(leader_ss_id) = self.leader_ss_id {
-            if let Some(leader_ss_middleman) = self.ss_communicators.get(&leader_ss_id) {
-                leader_ss_middleman
-                    .try_send(ss_middleman::SendOnlineMsg {
-                        msg_to_send: SSMessage::SolvedAskForStockProduct {
-                            requestor_ss_id: msg.ss_id,
-                            requestor_worker_id: msg.worker_id,
-                            product_name: msg.product_name.clone(),
-                            stock: msg.stock,
-                        }
-                        .to_string()
-                        .map_err(|err| err.to_string())?,
-                    })
-                    .map_err(|err| err.to_string())?;
-                return Ok(());
-            }
+        info!(
+            "[ConnectionHandler] Redirecting solved ask for stock product from DB to ss {:?}.",
+            msg.ss_id
+        );
+        if let Some(ss_middleman) = self.ss_communicators.get(&msg.ss_id) {
+            ss_middleman
+                .try_send(ss_middleman::SendOnlineMsg {
+                    msg_to_send: SSMessage::SolvedAskForStockProduct {
+                        requestor_ss_id: msg.ss_id,
+                        requestor_worker_id: msg.worker_id,
+                        product_name: msg.product_name.clone(),
+                        stock: msg.stock,
+                    }
+                    .to_string()
+                    .map_err(|err| err.to_string())?,
+                })
+                .map_err(|err| err.to_string())?;
+            return Ok(());
         }
-        error!("[ConnectionHandler] No leader selected yet");
-        Err("No leader selected yet".to_string())
+
+        error!("[ConnectionHandler] No server found");
+        Err("No server found".to_string())
     }
 }
 
@@ -1159,7 +1163,7 @@ impl Handler<LeaderElection> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _msg: LeaderElection, _ctx: &mut Self::Context) -> Self::Result {
-        warn!("[ConnectionHandler] LeaderElection message received");
+        info!("[ConnectionHandler] LeaderElection message received");
 
         if let Some(max_ss_id) = self.ss_communicators.keys().max() {
             if max_ss_id > &self.my_ss_id {
@@ -1177,8 +1181,10 @@ impl Handler<LeaderElection> for ConnectionHandler {
         };
 
         info!("[ConnectionHandler] I'm the new leader [{}]", self.my_ss_id);
-        for (server_id, ss_middleman) in self.ss_communicators.iter() {
-            info!("[ConnectionHandler] Notifying server {}", server_id);
+        self.leader_ss_id = Some(self.my_ss_id);
+        self.leader_sl_id = Some(self.my_sl_id);
+        for (ss_id, ss_middleman) in self.ss_communicators.iter() {
+            info!("[ConnectionHandler] Notifying server {}", ss_id);
             ss_middleman
                 .try_send(ss_middleman::SendSelectedLeader {
                     my_ss_id: self.my_ss_id,
@@ -1186,9 +1192,6 @@ impl Handler<LeaderElection> for ConnectionHandler {
                 })
                 .map_err(|err| err.to_string())?;
         }
-        self.leader_ss_id = Some(self.my_ss_id);
-        self.leader_sl_id = Some(self.my_sl_id);
-
         Ok(())
     }
 }
@@ -1248,7 +1251,7 @@ impl Handler<CheckIfTheOneWhoClosedWasLeader> for ConnectionHandler {
             self.leader_sl_id = None;
             if let Some(max_ss_id) = self.ss_communicators.keys().max() {
                 if let Some(min_ss_id) = self.ss_communicators.keys().min() {
-                    if min_ss_id > &self.my_ss_id {
+                    if &self.my_ss_id < min_ss_id {
                         self.ss_communicators
                             .get(max_ss_id)
                             .ok_or(format!(
