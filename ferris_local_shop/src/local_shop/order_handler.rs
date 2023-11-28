@@ -187,7 +187,7 @@ impl Handler<TryFindEmptyOrderWorker> for OrderHandler {
         if let Some(order_worker) = self.order_workers.get(&msg.curr_worker_id) {
             if order_worker.given_order.is_none() {
                 info!(
-                    "[OrderHandler] OrderWorker [{}] is available to work. Sending order.",
+                    "[OrderHandler] OrderWorker [{}] is available for work.",
                     msg.curr_worker_id
                 );
                 ctx.address()
@@ -216,33 +216,37 @@ impl Handler<SendOrder> for OrderHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SendOrder, _: &mut Context<Self>) -> Self::Result {
-        let order = self.get_order().ok_or("No more orders to send.")?;
-        info!(
-            "[OrderHandler] Sending order: {:?} to OrderWorker: [{}].",
-            order.get_products(),
-            msg.worker_id,
-        );
-
-        let order_worker = self
-            .order_workers
-            .get_mut(&msg.worker_id)
-            .ok_or("No worker with given id.")?;
-
-        if order_worker.given_order.is_some() {
-            error!(
-                "[OrderHandler] OrderWorker [{}] had an order already.",
-                order_worker.id
+        if let Some(order) = self.get_order() {
+            info!(
+                "[OrderHandler] Sending order: {:?} to OrderWorker: [{}].",
+                order.get_products(),
+                msg.worker_id,
             );
-            return Err("Worker already has an order.".to_owned());
-        }
 
-        order_worker.given_order = Some(order.clone());
-        order_worker
-            .worker_addr
-            .try_send(order_worker::WorkNewOrder {
-                order: order.clone(),
-            })
-            .map_err(|err| err.to_string())
+            let order_worker = self
+                .order_workers
+                .get_mut(&msg.worker_id)
+                .ok_or("No worker with given id.")?;
+
+            if order_worker.given_order.is_some() {
+                error!(
+                    "[OrderHandler] OrderWorker [{}] had an order already.",
+                    order_worker.id
+                );
+                return Err("Worker already has an order.".to_owned());
+            }
+
+            order_worker.given_order = Some(order.clone());
+            order_worker
+                .worker_addr
+                .try_send(order_worker::WorkNewOrder {
+                    order: order.clone(),
+                })
+                .map_err(|err| err.to_string())
+        } else {
+            info!("[OrderHandler] No more orders to send.");
+            Ok(())
+        }
     }
 }
 

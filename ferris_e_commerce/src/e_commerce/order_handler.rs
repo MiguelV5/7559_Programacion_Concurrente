@@ -126,7 +126,7 @@ impl Handler<TryFindEmptyOrderWorker> for OrderHandler {
         if let Some(order_worker) = self.order_workers.get(&msg.curr_worker_id) {
             if order_worker.given_order.is_none() {
                 info!(
-                    "[OrderHandler] OrderWorker [{}] is available for work. Sending order.",
+                    "[OrderHandler] OrderWorker [{}] is available for work.",
                     msg.curr_worker_id
                 );
                 ctx.address()
