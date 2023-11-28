@@ -1,3 +1,11 @@
+//! This module contains the `ConnectionHandler` actor, which is responsible for managing connections.
+//!
+//! It keeps track of the last local id assigned and maintains a map of
+//! database communicators for each server connected to the database.
+//!
+//! It also handles messages from the database communicators and forwards them
+//! to the `StockHandler`.
+
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
 use shared::{
     communication::db_response::DBResponse,
@@ -10,11 +18,14 @@ use super::{
     stock_handler::{self, StockHandler},
 };
 
+/// `ConnectionHandler` is responsible for managing connections.
+///
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ConnectionHandler {
     pub stock_handler: Addr<StockHandler>,
     pub last_local_id: u16,
-    pub db_communicators: HashMap<u16, Addr<DBMiddleman>>,
+    pub db_middlemen: HashMap<u16, Addr<DBMiddleman>>,
 }
 
 impl Actor for ConnectionHandler {
@@ -26,7 +37,7 @@ impl ConnectionHandler {
         ConnectionHandler {
             stock_handler,
             last_local_id: 0,
-            db_communicators: HashMap::new(),
+            db_middlemen: HashMap::new(),
         }
     }
 
@@ -49,7 +60,7 @@ impl Handler<SaveDBMiddlemanWithId> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SaveDBMiddlemanWithId, _: &mut Self::Context) -> Self::Result {
-        self.db_communicators
+        self.db_middlemen
             .insert(msg.ecommerce_id, msg.db_middleman_addr);
         Ok(())
     }

@@ -1,9 +1,13 @@
+//! This module contains the `StockHandler` actor, which is responsible for managing the stock.
+//!
+//! It keeps track of the stock of each local shop and handles them according to the queries from the e-commerce servers.
+
 use std::collections::HashMap;
 
 use actix::prelude::*;
 
 use shared::model::{order::Order, stock_product::Product};
-use tracing::{error, trace};
+use tracing::{debug, error};
 
 use super::{
     connection_handler::{self, ConnectionHandler},
@@ -95,7 +99,7 @@ impl Actor for StockHandler {
     type Context = actix::Context<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
-        trace!("StockHandler started");
+        debug!("[StockHandler] Started");
     }
 }
 

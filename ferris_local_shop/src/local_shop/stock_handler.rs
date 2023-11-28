@@ -1,8 +1,14 @@
+//! This module contains the `StockHandler` actor.
+//!
+//! This actor is responsible for handling the stock of the shop.
+//! It can take, restore, reserve and unreserve products upon request from the `OrderWorkers`.
+//! It can also give the stock to the `ConnectionHandler` actor if asked.
+
 extern crate actix;
 use actix::prelude::*;
 use shared::model::stock_product::Product;
 use std::{collections::HashMap, thread, time};
-use tracing::{error, trace};
+use tracing::{debug, error, info};
 
 use crate::local_shop::connection_handler::ResponseAllStockMessage;
 
@@ -33,7 +39,7 @@ impl StockHandler {
     }
 
     fn wait(&self) {
-        thread::sleep(time::Duration::from_millis(1000));
+        thread::sleep(time::Duration::from_millis(1500));
     }
 }
 
@@ -48,7 +54,7 @@ impl Handler<TakeProduct> for StockHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: TakeProduct, _ctx: &mut SyncContext<Self>) -> Self::Result {
-        trace!("[StockHandler] Trying to take product: {:?}.", msg.product);
+        debug!("[StockHandler] Trying to take product: {:?}.", msg.product);
         self.wait();
 
         let requested_product_name = msg.product.get_name();
@@ -64,12 +70,18 @@ impl Handler<TakeProduct> for StockHandler {
                         product: requested_product,
                     })
                     .map_err(|err| err.to_string())?;
-                trace!("[StockHandler] Giving product: {:?}.", msg.product);
+                info!(
+                    "[StockHandler] Giving product: {:?} to worker.",
+                    msg.product
+                );
                 return Ok(());
             }
         }
 
-        trace!("[StockHandler] No product to give: {:?}.", msg.product);
+        info!(
+            "[StockHandler] I don't have the requested product to take: {:?}",
+            msg.product
+        );
         msg.worker_addr
             .try_send(StockNoProduct {})
             .map_err(|err| err.to_string())
@@ -78,15 +90,15 @@ impl Handler<TakeProduct> for StockHandler {
 
 #[derive(Message)]
 #[rtype(result = "()")]
-pub struct ReturnProduct {
+pub struct RestoreProduct {
     pub product: Product,
 }
 
-impl Handler<ReturnProduct> for StockHandler {
+impl Handler<RestoreProduct> for StockHandler {
     type Result = ();
 
-    fn handle(&mut self, msg: ReturnProduct, _ctx: &mut SyncContext<Self>) -> Self::Result {
-        trace!("[StockHandler] Returning product: {:?}", msg.product);
+    fn handle(&mut self, msg: RestoreProduct, _ctx: &mut SyncContext<Self>) -> Self::Result {
+        info!("[StockHandler] Restoring product: {:?}", msg.product);
 
         let returned_product_name = msg.product.get_name();
         let returned_product_quantity = msg.product.get_quantity();
@@ -110,7 +122,7 @@ impl Handler<ReserveProduct> for StockHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: ReserveProduct, _ctx: &mut SyncContext<Self>) -> Self::Result {
-        trace!(
+        debug!(
             "[StockHandler] Trying to reserve product: {:?}",
             msg.product
         );
@@ -133,12 +145,15 @@ impl Handler<ReserveProduct> for StockHandler {
                 msg.worker_addr
                     .try_send(StockProductReserved {})
                     .map_err(|err| err.to_string())?;
-                trace!("[StockHandler] Reserving product: {:?}", msg.product);
+                info!("[StockHandler] Reserving product: {:?}", msg.product);
                 return Ok(());
             }
         }
 
-        trace!("[StockHandler] No product to reserve: {:?}", msg.product);
+        info!(
+            "[StockHandler] I don't have the requested product to reserve: {:?}",
+            msg.product
+        );
         msg.worker_addr
             .try_send(StockNoProduct {})
             .map_err(|err| err.to_string())
@@ -156,7 +171,10 @@ impl Handler<TakeReservedProduct> for StockHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: TakeReservedProduct, _ctx: &mut SyncContext<Self>) -> Self::Result {
-        trace!("[StockHandler] Taking reserved product: {:?}", msg.product);
+        debug!(
+            "[StockHandler] Trying to take reserved product: {:?}",
+            msg.product
+        );
         self.wait();
 
         let requested_product_name = msg.product.get_name();
@@ -171,7 +189,10 @@ impl Handler<TakeReservedProduct> for StockHandler {
                     product: requested_product,
                 })
                 .map_err(|err| err.to_string())?;
-            trace!("[StockHandler] Giving reserved product: {:?}", msg.product);
+            info!(
+                "[StockHandler] Giving reserved product: {:?} to worker.",
+                msg.product
+            );
             return Ok(());
         }
 
@@ -193,7 +214,7 @@ impl Handler<UnreserveProduct> for StockHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: UnreserveProduct, _ctx: &mut SyncContext<Self>) -> Self::Result {
-        trace!("[StockHandler] Unreserving product: {:?}", msg.product);
+        info!("[StockHandler] Unreserving product: {:?}", msg.product);
 
         let requested_product_name = msg.product.get_name();
         let requested_product_quantity = msg.product.get_quantity();
@@ -223,7 +244,7 @@ impl Handler<AskAllStock> for StockHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: AskAllStock, _ctx: &mut SyncContext<Self>) -> Self::Result {
-        trace!("[StockHandler] Counting stock.");
+        info!("[StockHandler] Counting stock.");
 
         msg.connection_handler_addr
             .try_send(ResponseAllStockMessage {

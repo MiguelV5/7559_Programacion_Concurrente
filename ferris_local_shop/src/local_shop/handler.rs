@@ -1,3 +1,8 @@
+//! This module contains the logic for starting the local shop.
+//! It starts the connection handler, the order handler, the stock handler and the order workers.
+//! It also starts both the input handler which listens for user input, and calls for
+//! startup of the connection with the e-commerce.
+
 use super::{
     connection_handler::ConnectionHandler,
     input_handler, ls_communicator,

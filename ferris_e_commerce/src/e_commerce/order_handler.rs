@@ -1,12 +1,14 @@
-use std::collections::HashMap;
-
-use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
-use shared::model::order::{Order, WebOrder};
-use tracing::{error, info, warn};
-
-use crate::e_commerce::order_worker;
+//! This module contains the `OrderHandler` actor.
+//!
+//! It is responsible for receiving orders and sending them to the `OrderWorker` actors whenever
+//! they are available.
 
 use super::order_worker::OrderWorker;
+use crate::e_commerce::order_worker;
+use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
+use shared::model::order::{Order, WebOrder};
+use std::collections::HashMap;
+use tracing::{debug, error, info};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct OrderWorkerStatus {
@@ -35,7 +37,7 @@ impl Actor for OrderHandler {
     type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
-        warn!("OrderHandler started");
+        debug!("[OrderHandler] Started");
     }
 }
 
@@ -100,7 +102,7 @@ impl Handler<StartUp> for OrderHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: StartUp, ctx: &mut Context<Self>) -> Self::Result {
-        info!("[OrderHandler] Starting up.");
+        info!("[OrderHandler] Starting with orders.");
         ctx.address()
             .try_send(TryFindEmptyOrderWorker { curr_worker_id: 0 })
             .map_err(|err| err.to_string())
@@ -124,7 +126,7 @@ impl Handler<TryFindEmptyOrderWorker> for OrderHandler {
         if let Some(order_worker) = self.order_workers.get(&msg.curr_worker_id) {
             if order_worker.given_order.is_none() {
                 info!(
-                    "[OrderHandler] The OrderWorker {} is empty.",
+                    "[OrderHandler] OrderWorker [{}] is available for work. Sending order.",
                     msg.curr_worker_id
                 );
                 ctx.address()
@@ -160,16 +162,17 @@ impl Handler<SendOrderToWorker> for OrderHandler {
                 .ok_or("No worker with given id.")?;
 
             info!(
-                "[OrderHandler] Sending to OrderWorker {:?} a new order: {:?}.",
-                msg.worker_id, order
+                "[OrderHandler] Sending order: {:?} to OrderWorker: [{}].",
+                order.get_products(),
+                msg.worker_id
             );
 
             if order_worker.given_order.is_some() {
                 error!(
-                    "[OrderHandler] OrderWorker {:?} already has an order.",
+                    "[OrderHandler] OrderWorker [{}] had an order already.",
                     order_worker.id
                 );
-                return Err("Worker already has an order.".to_owned());
+                return Err("Worker had an order already.".to_owned());
             }
 
             order_worker.given_order = Some(order.clone());
@@ -204,14 +207,14 @@ impl Handler<OrderCompleted> for OrderHandler {
 
         if order_worker.given_order.is_none() {
             error!(
-                "[OrderHandler] Order completed from worker that didn't have a given order: {:?}.",
+                "[OrderHandler] Order completed from worker [{}] that didn't have a given order.",
                 msg.worker_id
             );
             return Err("Order completed from worker that didn't have a given order.".to_owned());
         }
 
         info!(
-            "[OrderHandler] Order completed from OrderWorker {:?}: {:?}",
+            "[OrderHandler] OrderWorker: [{}] completed an order: {:?}",
             order_worker.id, msg.order
         );
         order_worker.given_order = None;
@@ -242,15 +245,16 @@ impl Handler<OrderCancelled> for OrderHandler {
 
         if order_worker.given_order.is_none() {
             error!(
-                "[OrderHandler] Order cancelled from worker that didn't have a given order: {:?}.",
+                "[OrderHandler] Order cancelled from worker [{}] that didn't have a given order.",
                 msg.worker_id
             );
             return Err("Order cancelled from worker that didn't have a given order.".to_owned());
         }
 
         info!(
-            "[OrderHandler] Order cancelled from OrderWorker {:?}: {:?}.",
-            order_worker.id, order_worker.given_order
+            "[OrderHandler] OrderWorker: [{}] cancelled an order: {:?}.",
+            order_worker.id,
+            order_worker.given_order.as_ref().ok_or("No order.")?
         );
         order_worker.given_order = None;
 

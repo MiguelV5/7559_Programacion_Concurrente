@@ -1,6 +1,9 @@
-mod db;
+//! Ferris DB is a simple key-value store that uses a HashMap in memory to store data.
+//!
+//! It uses the `actix` framework for actor creation upon connection establishment, and `tokio` for async I/O and task spawning.
+//!
 
-use tracing::info;
+mod db;
 
 fn init_logger() {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -11,6 +14,5 @@ fn init_logger() {
 
 pub fn run() -> Result<(), String> {
     init_logger();
-    info!("Starting database");
     db::handler::start()
 }

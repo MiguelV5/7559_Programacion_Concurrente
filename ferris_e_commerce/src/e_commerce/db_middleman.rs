@@ -1,21 +1,20 @@
-use std::sync::Arc;
+//! This module contains the DBMiddleman actor, which is responsible for
+//! the direct communication via TCP with the database.
 
+use super::{
+    connection_handler::{self, ConnectionHandler, HandleSolvedQueryOfStockProductFromDB},
+    sl_middleman::SLMiddleman,
+};
 use actix::fut::wrap_future;
 use actix::prelude::*;
-use shared::communication::db_request::DBRequest;
-use shared::communication::db_response::DBResponse;
-use tokio::io::AsyncWriteExt;
-use tokio::io::WriteHalf;
-use tokio::net::TcpStream as AsyncTcpStream;
-use tokio::sync::Mutex;
-use tracing::error;
-use tracing::info;
-use tracing::trace;
-
-use super::connection_handler;
-use super::connection_handler::ConnectionHandler;
-use super::connection_handler::HandleSolvedAskForStockProductFromDB;
-use super::sl_middleman::SLMiddleman;
+use shared::communication::{db_request::DBRequest, db_response::DBResponse};
+use std::sync::Arc;
+use tokio::{
+    io::{AsyncWriteExt, WriteHalf},
+    net::TcpStream as AsyncTcpStream,
+    sync::Mutex,
+};
+use tracing::{debug, error, info};
 
 pub struct DBMiddleman {
     connection_handler: Addr<ConnectionHandler>,
@@ -49,7 +48,7 @@ impl Actor for DBMiddleman {
 impl StreamHandler<Result<String, std::io::Error>> for DBMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
-            trace!("[ONLINE RECEIVER DB] Received msg: {}", msg);
+            debug!("[ONLINE RECEIVER DB] Received msg:\n{}", msg);
             if ctx
                 .address()
                 .try_send(HandleOnlineMsg { received_msg: msg })
@@ -63,7 +62,7 @@ impl StreamHandler<Result<String, std::io::Error>> for DBMiddleman {
     }
 
     fn finished(&mut self, ctx: &mut Self::Context) {
-        trace!("[DBMiddleman] Connection finished with DB.");
+        debug!("[DBMiddleman] Connection finished with DB.");
         self.connection_handler
             .do_send(connection_handler::RemoveDBMiddleman {});
         ctx.stop();
@@ -93,7 +92,7 @@ impl Handler<HandleOnlineMsg> for DBMiddleman {
                 product_quantity_by_local_id,
             } => {
                 self.connection_handler
-                    .try_send(HandleSolvedAskForStockProductFromDB {
+                    .try_send(HandleSolvedQueryOfStockProductFromDB {
                         ss_id,
                         worker_id,
                         product_name,
@@ -118,7 +117,7 @@ impl Handler<HandleNewLocalIdFromDB> for DBMiddleman {
     fn handle(&mut self, msg: HandleNewLocalIdFromDB, _ctx: &mut Self::Context) -> Self::Result {
         if let Some(sl_middleman) = &self.current_sl_requestor {
             info!(
-                "[DBMiddleman] Received new local id from db: {}",
+                "[DBMiddleman] Received new local id from db: [{}]",
                 msg.local_id
             );
             self.connection_handler
@@ -149,7 +148,7 @@ impl Handler<SendOnlineMsg> for DBMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SendOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
-        let online_msg = msg.msg_to_send + "\n";
+        let online_msg = msg.msg_to_send.clone() + "\n";
         let writer = self.writer.clone();
         wrap_future::<_, Self>(async move {
             if writer
@@ -159,7 +158,7 @@ impl Handler<SendOnlineMsg> for DBMiddleman {
                 .await
                 .is_ok()
             {
-                trace!("[ONLINE SENDER DB]: {}", online_msg);
+                debug!("[ONLINE SENDER DB]: Sending msg:\n{}", msg.msg_to_send);
             } else {
                 error!("[ONLINE SENDER DB]: Error writing to stream")
             };

@@ -1,11 +1,20 @@
-use super::connection_handler::{self, ConnectionHandler};
-use super::order_worker::OrderWorker;
-use super::{db_communicator, order_handler};
-use super::{input_handler, order_handler::OrderHandler, sl_communicator, ss_communicator};
+//! This module contains the main handler of the e-commerce system.
+//! It is responsible for starting all the actors and setting up the communication
+//! between them. It also calls the differrent modules to setup I/O listeners.
+
+use super::{
+    connection_handler::{self, ConnectionHandler},
+    db_communicator, input_handler,
+    order_handler::{self, OrderHandler},
+    order_worker::OrderWorker,
+    sl_communicator, ss_communicator,
+};
 use actix::prelude::*;
 use shared::{model::order::Order, parsers::orders_parser::OrdersParser};
-use std::error::Error;
-use std::sync::mpsc::{self, channel};
+use std::{
+    error::Error,
+    sync::mpsc::{self, channel},
+};
 use tokio::join;
 
 pub fn start(
@@ -107,10 +116,10 @@ async fn start_actors(
 ) -> Result<Addr<ConnectionHandler>, Box<dyn Error>> {
     let order_handler = OrderHandler::new(&orders).start();
     let connection_handler = ConnectionHandler::new(order_handler.clone(), ss_id, sl_id).start();
-    let db_communicator = db_communicator::setup_db_connection(connection_handler.clone()).await?;
+    let db_middleman = db_communicator::setup_db_connection(connection_handler.clone()).await?;
     connection_handler
         .send(connection_handler::AddDBMiddlemanAddr {
-            db_communicator: db_communicator.clone(),
+            db_middleman: db_middleman.clone(),
         })
         .await??;
 

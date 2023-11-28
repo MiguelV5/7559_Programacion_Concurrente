@@ -1,9 +1,23 @@
+//! This module contains the `OrderWorker` actor.
+//!
+//! It is responsible for receiving the orders from the `OrderHandler` actor and sending them to
+//! the `ConnectionHandler` actor.
+//!
+//! It is also responsible for receiving the stock of the products from the `ConnectionHandler`
+//! upon order processing and act accordingly in order to delegate the order to
+//! the closest local that has enough stock to complete it.
+//!
+//! # Note
+//!
+//! The message handling that is done in this actor differs from the one of the actor with the same name
+//! defined in the local shop. Refer to the arquitecture documentation to see the differences.
+
 use std::collections::HashMap;
 
 use actix::{Actor, Addr, Context, Handler, Message};
 use rand::Rng;
 use shared::model::order::Order;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::e_commerce::{connection_handler, order_handler};
 
@@ -22,7 +36,7 @@ impl Actor for OrderWorker {
     type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
-        info!("OrderWorker started");
+        debug!("[OrderWorker] Started");
     }
 }
 
@@ -55,7 +69,7 @@ impl Handler<WorkNewOrder> for OrderWorker {
 
     fn handle(&mut self, msg: WorkNewOrder, _ctx: &mut Context<Self>) -> Self::Result {
         info!(
-            "[OrderWorker {:?}] Handling new order: {:?}",
+            "[OrderWorker {}] Handling new order: {:?}",
             self.id, msg.order
         );
         self.curr_order = Some(msg.order.clone());
@@ -63,7 +77,7 @@ impl Handler<WorkNewOrder> for OrderWorker {
 
         for product in msg.order.get_products().iter() {
             self.connection_handler
-                .try_send(connection_handler::AskForStockProductFromOrderWorker {
+                .try_send(connection_handler::AskForStockProductByOrderWorker {
                     product_name: product.get_name(),
                     worker_id: self.id,
                 })
@@ -75,23 +89,23 @@ impl Handler<WorkNewOrder> for OrderWorker {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct SolvedStockProductForOrderWorker {
+pub struct SolvedStockProductQueryForOrderWorker {
     pub product_name: String,
     pub stock: HashMap<u16, i32>,
     pub my_ss_id: u16,
     pub my_sl_id: u16,
 }
 
-impl Handler<SolvedStockProductForOrderWorker> for OrderWorker {
+impl Handler<SolvedStockProductQueryForOrderWorker> for OrderWorker {
     type Result = Result<(), String>;
 
     fn handle(
         &mut self,
-        msg: SolvedStockProductForOrderWorker,
+        msg: SolvedStockProductQueryForOrderWorker,
         _ctx: &mut Context<Self>,
     ) -> Self::Result {
         info!(
-            "[OrderWorker {:?}] Got stock by local for product: {:?}",
+            "[OrderWorker {}] Got stock by local for product: {:?}",
             self.id, msg.product_name
         );
 
@@ -112,7 +126,7 @@ impl Handler<SolvedStockProductForOrderWorker> for OrderWorker {
 
             if available_locals.is_empty() {
                 info!(
-                    "[OrderWorker {:?}] No local has enough stock to complete order: [{:?}: {:?}].",
+                    "[OrderWorker {}] No local has enough stock to complete order ( {:?} ; Required amnt: {} ).",
                     self.id, msg.product_name, required_product_amount
                 );
                 self.order_handler
@@ -136,9 +150,10 @@ impl Handler<SolvedStockProductForOrderWorker> for OrderWorker {
             self.cache_of_available_locals_for_curr_order = available_locals;
 
             info!(
-                "[OrderWorker {:?}] Order assigned to local: [{:?}]",
+                "[OrderWorker {}] Order assigned to local: [{:?}]",
                 self.id, closest_local_id
             );
+
             self.connection_handler
                 .try_send(connection_handler::WorkNewOrder {
                     order: Order::Web(current_order.clone()),
@@ -162,7 +177,7 @@ impl Handler<OrderNotTakenFromLocal> for OrderWorker {
         if let Some(Order::Web(current_order)) = self.curr_order.as_mut() {
             if self.cache_of_available_locals_for_curr_order.is_empty() {
                 info!(
-                    "[OrderWorker {:?}] No local has enough stock to complete order: [{:?}: {:?}].",
+                    "[OrderWorker {}] No local has enough stock to complete order ( {:?} ; Required amnt: {} ).",
                     self.id,
                     current_order.get_products()[0].get_name(),
                     current_order.get_products()[0].get_quantity()
@@ -187,7 +202,7 @@ impl Handler<OrderNotTakenFromLocal> for OrderWorker {
                 .remove(new_closest_local);
 
             info!(
-                "[OrderWorker {:?}] Order could not be taken by local. Trying with: [{:?}]",
+                "[OrderWorker {}] Order could not be taken by local. Trying with another one: [{}]",
                 self.id, new_closest_local_id,
             );
             self.connection_handler
@@ -212,12 +227,12 @@ impl Handler<OrderCompletedFromLocal> for OrderWorker {
 
     fn handle(&mut self, msg: OrderCompletedFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
         info!(
-            "[OrderWorker {:?}] Checking received order completed",
+            "[OrderWorker {}] Checking received order completed",
             self.id
         );
         if self.curr_order != Some(msg.order) {
             error!(
-                "[OrderWorker {:?}] Order completed from unknown local.",
+                "[OrderWorker {}] Order completed from unknown local.",
                 self.id
             );
             return Err("Order completed from unknown local.".to_string());
@@ -225,9 +240,13 @@ impl Handler<OrderCompletedFromLocal> for OrderWorker {
 
         if let Some(Order::Web(current_order)) = &self.curr_order {
             info!(
-                "[OrderWorker {:?}] Order completed by local: [{:?}]",
+                "[OrderWorker {}] Order completed by local: [{}]",
                 self.id,
-                self.curr_order.as_ref().ok_or("")?.get_local_id()
+                self.curr_order
+                    .as_ref()
+                    .ok_or("")?
+                    .get_local_id()
+                    .ok_or("")?
             );
             self.order_handler
                 .try_send(order_handler::OrderCompleted {
@@ -254,12 +273,12 @@ impl Handler<OrderCancelledFromLocal> for OrderWorker {
 
     fn handle(&mut self, msg: OrderCancelledFromLocal, _ctx: &mut Context<Self>) -> Self::Result {
         info!(
-            "[OrderWorker {:?}] Checking received order cancelled",
+            "[OrderWorker {}] Checking received order cancelled",
             self.id
         );
         if self.curr_order != Some(msg.order) {
             error!(
-                "[OrderWorker {:?}] Order cancelled doesn't match with current order.",
+                "[OrderWorker {}] Order cancelled doesn't match with current order.",
                 self.id
             );
             return Err("Order cancelled doesn't match with current order.".to_string());
@@ -267,12 +286,16 @@ impl Handler<OrderCancelledFromLocal> for OrderWorker {
 
         if let Some(Order::Web(current_order)) = &self.curr_order {
             info!(
-                "[OrderWorker {:?}] Order cancelled by local: [{:?}]. Retrying completely.",
+                "[OrderWorker {}] Order cancelled by local: [{}]. Retrying completely.",
                 self.id,
-                self.curr_order.as_ref().ok_or("")?.get_local_id()
+                self.curr_order
+                    .as_ref()
+                    .ok_or("")?
+                    .get_local_id()
+                    .ok_or("")?
             );
             self.connection_handler
-                .try_send(connection_handler::AskForStockProductFromOrderWorker {
+                .try_send(connection_handler::AskForStockProductByOrderWorker {
                     product_name: current_order.get_products()[0].get_name(),
                     worker_id: self.id,
                 })

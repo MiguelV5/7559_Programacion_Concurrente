@@ -1,15 +1,20 @@
-//! # FerrisCommerce - Modulo de servidores e_commerce
+//! Ferris e-commerce is a server node for a stock management system that allows to request products
+//! from the closest local shop node available.
 //!
+//! It is part of a distributed system where the local shops are expected to
+//! have connections that are prone to be shut down at any time.
+//!
+//! The server nodes are also expected to have their connections shut down, thus they
+//! implement a leader election algorithm to allow single access to the database and
+//! handle the connections with the local shops.
 
 pub mod e_commerce;
-
-use std::{error::Error, fmt};
-
 use e_commerce::constants::DEFAULT_ORDERS_FILEPATH;
 use shared::{
     model::constants::{SL_INITIAL_PORT, SS_INITIAL_PORT},
     port_binder::listener_binder::LOCALHOST,
 };
+use std::{error::Error, fmt};
 use tracing::{error, info};
 
 #[derive(Debug)]

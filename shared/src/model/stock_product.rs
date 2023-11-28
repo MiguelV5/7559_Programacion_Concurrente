@@ -15,7 +15,6 @@ impl fmt::Display for ProductError {
 
 impl Error for ProductError {}
 
-// impl Error for ProductError {}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Product {
     name: String,

@@ -1,21 +1,21 @@
-use std::sync::Arc;
-
-use actix::{
-    dev::ContextFutureSpawner, fut::wrap_future, Actor, Context, Handler, Message, StreamHandler,
-};
-use actix::{ActorContext, Addr, AsyncContext};
-use shared::communication::sl_message::SLMessage;
-use shared::model::order::Order;
-use tracing::{error, info, trace};
-
-use tokio::io::AsyncWriteExt;
-use tokio::io::WriteHalf;
-use tokio::net::TcpStream as AsyncTcpStream;
-use tokio::sync::Mutex;
-
-use crate::local_shop::connection_handler::{self, LeaderMessage, RemoveLSMiddleman};
+//! This module contains the `LSMiddleman` actor.
+//!
+//! It is responsible for handling the direct communication with the e-commerce server via TCP.
 
 use super::connection_handler::ConnectionHandler;
+use crate::local_shop::connection_handler::{self, LeaderMessage, RemoveLSMiddleman};
+use actix::{
+    dev::ContextFutureSpawner, fut::wrap_future, Actor, ActorContext, Addr, AsyncContext, Context,
+    Handler, Message, StreamHandler,
+};
+use shared::{communication::sl_message::SLMessage, model::order::Order};
+use std::sync::Arc;
+use tokio::{
+    io::{AsyncWriteExt, WriteHalf},
+    net::TcpStream as AsyncTcpStream,
+    sync::Mutex,
+};
+use tracing::{debug, error, info};
 
 #[derive(Debug)]
 pub struct LSMiddleman {
@@ -47,7 +47,7 @@ impl Handler<CloseConnection> for LSMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: CloseConnection, ctx: &mut Context<Self>) -> Self::Result {
-        info!("[LSMiddleman] Closing connection.");
+        debug!("[LSMiddleman] Closing connection.");
         ctx.stop();
         Ok(())
     }
@@ -66,7 +66,7 @@ struct HandleOnlineMsg {
 impl StreamHandler<Result<String, std::io::Error>> for LSMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
-            trace!("[ONLINE RECEIVER LS] Received msg: {}", msg);
+            debug!("[ONLINE RECEIVER LS] Received msg:\n{}", msg);
             if ctx
                 .address()
                 .try_send(HandleOnlineMsg { received_msg: msg })
@@ -80,7 +80,7 @@ impl StreamHandler<Result<String, std::io::Error>> for LSMiddleman {
     }
 
     fn finished(&mut self, ctx: &mut Self::Context) {
-        trace!("[ONLINE RECEIVER LS] Connection closed.");
+        debug!("[ONLINE RECEIVER LS] Connection closed.");
         self.connection_handler_addr.do_send(RemoveLSMiddleman {});
         ctx.stop();
     }
@@ -93,7 +93,9 @@ impl Handler<HandleOnlineMsg> for LSMiddleman {
         match SLMessage::from_string(&msg.received_msg).map_err(|err| err.to_string())? {
             SLMessage::LeaderMessage { leader_sl_id } => ctx
                 .address()
-                .try_send(HandleLeaderMessage { leader_sl_id })
+                .try_send(HandleLeaderMessage {
+                    leader_server_id: leader_sl_id,
+                })
                 .map_err(|err| err.to_string()),
             SLMessage::LocalSuccessfullyRegistered { local_id } => ctx
                 .address()
@@ -118,17 +120,16 @@ impl Handler<HandleOnlineMsg> for LSMiddleman {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 struct HandleLeaderMessage {
-    leader_sl_id: u16,
+    leader_server_id: u16,
 }
 
 impl Handler<HandleLeaderMessage> for LSMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: HandleLeaderMessage, _: &mut Self::Context) -> Self::Result {
-        info!("[LSMiddleman] Leader SL Id received: {}.", msg.leader_sl_id);
         self.connection_handler_addr
             .try_send(LeaderMessage {
-                leader_sl_id: msg.leader_sl_id,
+                leader_server_id: msg.leader_server_id,
             })
             .map_err(|err| err.to_string())
     }
@@ -149,7 +150,7 @@ impl Handler<HandleLocalSuccessfulRegister> for LSMiddleman {
         _: &mut Self::Context,
     ) -> Self::Result {
         info!(
-            "[LSMiddleman] Successfully registered. My new local id: {}.",
+            "[LSMiddleman] Successfully registered. My new local id: [{}].",
             msg.local_id
         );
 
@@ -203,7 +204,7 @@ impl Handler<HandleWorkNewOrderMessage> for LSMiddleman {
 
     fn handle(&mut self, msg: HandleWorkNewOrderMessage, _: &mut Self::Context) -> Self::Result {
         self.connection_handler_addr
-            .try_send(connection_handler::WorkNewOrder { order: msg.order })
+            .try_send(connection_handler::WorkNewWebOrder { order: msg.order })
             .map_err(|err| err.to_string())
     }
 }
@@ -222,7 +223,7 @@ impl Handler<SendOnlineMessage> for LSMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SendOnlineMessage, ctx: &mut Self::Context) -> Self::Result {
-        let online_msg = msg.msg_to_send + "\n";
+        let online_msg = msg.msg_to_send.clone() + "\n";
         let writer = self.connected_server_write_stream.clone();
         wrap_future::<_, Self>(async move {
             if writer
@@ -232,7 +233,7 @@ impl Handler<SendOnlineMessage> for LSMiddleman {
                 .await
                 .is_ok()
             {
-                trace!("[ONLINE SENDER LS]: {}", online_msg);
+                debug!("[ONLINE SENDER LS]: Sending msg:\n{}", msg.msg_to_send);
             } else {
                 error!("[ONLINE SENDER LS]: Error writing to stream")
             };

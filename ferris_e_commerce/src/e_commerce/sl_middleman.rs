@@ -1,24 +1,27 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use actix::{
-    dev::ContextFutureSpawner, fut::wrap_future, Actor, ActorContext, Context, StreamHandler,
-};
-use actix::{Addr, AsyncContext, Handler, Message};
-use shared::communication::ls_message::LSMessage;
-use shared::model::order::Order;
-use shared::model::stock_product::Product;
-use tokio::io::{AsyncWriteExt, WriteHalf};
-use tokio::net::TcpStream as AsyncTcpStream;
-use tokio::sync::Mutex;
-use tracing::{error, trace};
-
-use crate::e_commerce::connection_handler::RemoveSLMiddleman;
+//! This module contains the `SLMiddleman` actor
+//!
+//! It is responsible for handling the direct communication with the Local Shops via TCP.
 
 use super::connection_handler::{
     AskLeaderMessage, ConnectionHandler, LoginLocalMessage, OrderCompletedFromLocal, RegisterLocal,
     StockFromLocal, WebOrderCancelledFromLocal,
 };
+use crate::e_commerce::connection_handler::RemoveSLMiddleman;
+use actix::{
+    dev::ContextFutureSpawner, fut::wrap_future, Actor, ActorContext, Context, StreamHandler,
+};
+use actix::{Addr, AsyncContext, Handler, Message};
+use shared::{
+    communication::ls_message::LSMessage,
+    model::{order::Order, stock_product::Product},
+};
+use std::{collections::HashMap, sync::Arc};
+use tokio::{
+    io::{AsyncWriteExt, WriteHalf},
+    net::TcpStream as AsyncTcpStream,
+    sync::Mutex,
+};
+use tracing::{debug, error};
 
 pub struct SLMiddleman {
     pub local_id: Option<u16>,
@@ -56,14 +59,14 @@ impl Handler<CloseConnection> for SLMiddleman {
 
     fn handle(&mut self, _: CloseConnection, ctx: &mut Self::Context) -> Self::Result {
         if let Some(local_id) = self.local_id {
-            trace!(
+            debug!(
                 "[SLMiddleman] Connection finished from local id {:?}.",
                 self.local_id
             );
             self.connection_handler
                 .do_send(RemoveSLMiddleman { local_id });
         } else {
-            trace!("[SLMiddleman] Connection finished from unknown local.")
+            debug!("[SLMiddleman] Connection finished from unknown local.")
         }
 
         ctx.stop();
@@ -77,7 +80,7 @@ impl Handler<CloseConnection> for SLMiddleman {
 impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
-            trace!("[ONLINE RECEIVER SL] Received msg: {}", msg);
+            debug!("[ONLINE RECEIVER SL] Received msg:\n{}", msg);
             if ctx
                 .address()
                 .try_send(HandleOnlineMsg { received_msg: msg })
@@ -92,14 +95,14 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
 
     fn finished(&mut self, ctx: &mut Self::Context) {
         if let Some(sl_id) = self.local_id {
-            trace!(
+            debug!(
                 "[SLMiddleman] Connection finished from local id {:?}.",
                 self.local_id
             );
             self.connection_handler
                 .do_send(RemoveSLMiddleman { local_id: sl_id });
         } else {
-            trace!("[SLMiddleman] Connection finished from unknown local.")
+            debug!("[SLMiddleman] Connection finished from unknown local.")
         }
 
         ctx.stop();
@@ -292,7 +295,7 @@ impl Handler<SendOnlineMsg> for SLMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SendOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
-        let online_msg = msg.msg_to_send + "\n";
+        let online_msg = msg.msg_to_send.clone() + "\n";
         let writer = self.connected_local_shop_write_stream.clone();
         wrap_future::<_, Self>(async move {
             if writer
@@ -302,7 +305,7 @@ impl Handler<SendOnlineMsg> for SLMiddleman {
                 .await
                 .is_ok()
             {
-                trace!("[ONLINE SENDER SL]: {}", online_msg);
+                debug!("[ONLINE SENDER SL]: Sending msg:\n{}", msg.msg_to_send);
             } else {
                 error!("[ONLINE SENDER SL]: Error writing to stream")
             };

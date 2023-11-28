@@ -1,3 +1,16 @@
+//! This module contains the `ConnectionHandler` actor, which is responsible for managing connections.
+//!
+//! It is responsible for the general management of the connection status and all possible redirections
+//! of actions that need to be carried out in the different e-commerce actors.
+//! This includes, for example, management of the leader election algorithm and forwarding of results
+//! and delegation of order processing to the corresponding e-commerce node.
+//! It is the main entity of e-commerce and remains active even when connections are closed.
+//!
+//! # Note
+//!
+//! The message handling that is done in this actor differs greatly from the one of the actor with the same name
+//! defined in the local shop. Refer to the arquitecture documentation to see the differences.
+
 use std::collections::HashMap;
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
@@ -5,12 +18,12 @@ use actix_rt::System;
 use shared::{
     communication::{db_request::DBRequest, sl_message::SLMessage, ss_message::SSMessage},
     model::{
-        constants::{EXIT_MSG, WAKE_UP_CONNECTION},
+        constants::{EXIT_COMMAND, RECONNECT_COMMAND},
         order::Order,
         stock_product::Product,
     },
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::e_commerce::{
     order_worker,
@@ -37,10 +50,10 @@ pub struct ConnectionHandler {
 
     order_workers: HashMap<u16, Addr<OrderWorker>>,
 
-    sl_communicators: HashMap<u16, Addr<SLMiddleman>>,
-    ss_communicators: HashMap<u16, Addr<SSMiddleman>>,
+    sl_middlemen: HashMap<u16, Addr<SLMiddleman>>,
+    ss_middlemen: HashMap<u16, Addr<SSMiddleman>>,
 
-    db_communicator: Option<Addr<DBMiddleman>>,
+    db_middleman: Option<Addr<DBMiddleman>>,
 
     order_results_pending_to_redirect: HashMap<u16, Vec<(Order, bool)>>,
 
@@ -61,10 +74,10 @@ impl ConnectionHandler {
 
             order_workers: HashMap::new(),
 
-            sl_communicators: HashMap::new(),
-            ss_communicators: HashMap::new(),
+            sl_middlemen: HashMap::new(),
+            ss_middlemen: HashMap::new(),
 
-            db_communicator: None,
+            db_middleman: None,
 
             order_results_pending_to_redirect: HashMap::new(),
 
@@ -78,7 +91,7 @@ impl Actor for ConnectionHandler {
     type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
-        info!("[ConnectionHandler] Starting.");
+        debug!("[ConnectionHandler] Started");
     }
 }
 
@@ -89,7 +102,7 @@ impl Actor for ConnectionHandler {
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
 pub struct AddDBMiddlemanAddr {
-    pub db_communicator: Addr<DBMiddleman>,
+    pub db_middleman: Addr<DBMiddleman>,
 }
 
 impl Handler<AddDBMiddlemanAddr> for ConnectionHandler {
@@ -97,7 +110,7 @@ impl Handler<AddDBMiddlemanAddr> for ConnectionHandler {
 
     fn handle(&mut self, msg: AddDBMiddlemanAddr, _: &mut Self::Context) -> Self::Result {
         info!("[ConnectionHandler] Adding DB middleman.");
-        self.db_communicator = Some(msg.db_communicator.clone());
+        self.db_middleman = Some(msg.db_middleman.clone());
         Ok(())
     }
 }
@@ -111,7 +124,7 @@ impl Handler<RemoveDBMiddleman> for ConnectionHandler {
 
     fn handle(&mut self, _: RemoveDBMiddleman, _: &mut Self::Context) -> Self::Result {
         info!("[ConnectionHandler] Removing DBMiddleman.");
-        self.db_communicator = None;
+        self.db_middleman = None;
         Ok(())
     }
 }
@@ -128,7 +141,7 @@ impl Handler<AddSSMiddlemanAddr> for ConnectionHandler {
 
     fn handle(&mut self, msg: AddSSMiddlemanAddr, _ctx: &mut Self::Context) -> Self::Result {
         if let Some(ss_id) = msg.ss_id {
-            self.ss_communicators
+            self.ss_middlemen
                 .insert(ss_id, msg.ss_middleman_addr.clone());
         }
 
@@ -156,8 +169,8 @@ impl Handler<RegisterSSMiddleman> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: RegisterSSMiddleman, ctx: &mut Self::Context) -> Self::Result {
-        info!("[ConnectionHandler] Registering new SS: {}", msg.ss_id);
-        self.ss_communicators
+        info!("[ConnectionHandler] Registering new SS: [{}]", msg.ss_id);
+        self.ss_middlemen
             .insert(msg.ss_id, msg.ss_middleman_addr.clone());
         ctx.address()
             .try_send(TrySendPendingOrderResultsToOtherServer {
@@ -178,8 +191,11 @@ impl Handler<AddSLMiddleman> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: AddSLMiddleman, _: &mut Self::Context) -> Self::Result {
-        info!("[ConnectionHandler] Adding middleman.");
-        self.sl_communicators
+        info!(
+            "[ConnectionHandler] Adding SL middleman: [{}].",
+            msg.local_id
+        );
+        self.sl_middlemen
             .insert(msg.local_id, msg.sl_middleman_addr.clone());
 
         msg.sl_middleman_addr
@@ -201,8 +217,11 @@ impl Handler<RemoveSLMiddleman> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: RemoveSLMiddleman, _: &mut Self::Context) -> Self::Result {
-        info!("[ConnectionHandler] Removing SLMiddleman.");
-        self.sl_communicators.remove(&msg.local_id);
+        info!(
+            "[ConnectionHandler] Removing SL middleman: [{}].",
+            msg.local_id
+        );
+        self.sl_middlemen.remove(&msg.local_id);
         Ok(())
     }
 }
@@ -217,8 +236,8 @@ impl Handler<RemoveSSMiddleman> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: RemoveSSMiddleman, _: &mut Self::Context) -> Self::Result {
-        info!("[ConnectionHandler] Removing SSMiddleman {}.", msg.ss_id);
-        self.ss_communicators.remove(&msg.ss_id);
+        info!("[ConnectionHandler] Removing SSMiddleman: [{}].", msg.ss_id);
+        self.ss_middlemen.remove(&msg.ss_id);
         Ok(())
     }
 }
@@ -234,7 +253,10 @@ impl Handler<AddOrderWorkerAddr> for ConnectionHandler {
     type Result = ();
 
     fn handle(&mut self, msg: AddOrderWorkerAddr, _ctx: &mut Self::Context) -> Self::Result {
-        info!("[ConnectionHandler] Adding OrderWorker.");
+        info!(
+            "[ConnectionHandler] Adding OrderWorker: [{}].",
+            msg.order_worker_id
+        );
         self.order_workers
             .insert(msg.order_worker_id, msg.order_worker_addr);
     }
@@ -248,7 +270,6 @@ impl Handler<StartUp> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _msg: StartUp, _: &mut Context<Self>) -> Self::Result {
-        info!("[ConnectionHandler] Starting up working web orders.");
         self.order_handler
             .try_send(order_handler::StartUp {})
             .map_err(|err| err.to_string())
@@ -265,9 +286,8 @@ impl Handler<StopConnectionFromSL> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: StopConnectionFromSL, _: &mut Context<Self>) -> Self::Result {
-        info!("[ConnectionHandler] Stopping connection from SL.");
         self.tx_sl_console = Some(msg.tx_sl);
-        for (_, sl_middleman) in self.sl_communicators.iter() {
+        for (_, sl_middleman) in self.sl_middlemen.iter() {
             sl_middleman
                 .try_send(sl_middleman::CloseConnection {})
                 .map_err(|err| err.to_string())?;
@@ -286,9 +306,8 @@ impl Handler<StopConnectionFromSS> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: StopConnectionFromSS, _: &mut Context<Self>) -> Self::Result {
-        info!("[ConnectionHandler] Stopping connection from SS.");
         self.tx_ss_console = Some(msg.tx_ss);
-        for (_, ss_middleman) in self.ss_communicators.iter() {
+        for (_, ss_middleman) in self.ss_middlemen.iter() {
             ss_middleman
                 .try_send(ss_middleman::CloseConnection {})
                 .map_err(|err| err.to_string())?;
@@ -305,15 +324,13 @@ impl Handler<WakeUpConnection> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, _: WakeUpConnection, _: &mut Context<Self>) -> Self::Result {
-        info!("[ConnectionHandler] Trying to wake up connection.");
-
         if let Some(tx_ss) = &self.tx_ss_console {
             tx_ss
-                .try_send(WAKE_UP_CONNECTION.to_string())
+                .try_send(RECONNECT_COMMAND.to_string())
                 .map_err(|err| err.to_string())?;
             if let Some(tx_sl) = &self.tx_sl_console {
                 tx_sl
-                    .try_send(WAKE_UP_CONNECTION.to_string())
+                    .try_send(RECONNECT_COMMAND.to_string())
                     .map_err(|err| err.to_string())?;
                 info!("[ConnectionHandler] Waking up connection.");
                 return Ok(());
@@ -338,12 +355,12 @@ impl Handler<CloseSystem> for ConnectionHandler {
 
             if let Some(tx_ss) = &self.tx_ss_console {
                 tx_ss
-                    .try_send(EXIT_MSG.to_string())
+                    .try_send(EXIT_COMMAND.to_string())
                     .map_err(|err| err.to_string())?;
             }
             if let Some(tx_sl) = &self.tx_sl_console {
                 tx_sl
-                    .try_send(EXIT_MSG.to_string())
+                    .try_send(EXIT_COMMAND.to_string())
                     .map_err(|err| err.to_string())?;
             }
 
@@ -371,7 +388,7 @@ impl Handler<AskLeaderMessage> for ConnectionHandler {
     fn handle(&mut self, msg: AskLeaderMessage, _: &mut Self::Context) -> Self::Result {
         if let Some(leader_id) = self.leader_sl_id {
             info!(
-                "[ConnectionHandler] Sending e-commerce leader: {}",
+                "[ConnectionHandler] Current leader: [{}]. Sending to SL.",
                 leader_id
             );
             return msg
@@ -385,7 +402,7 @@ impl Handler<AskLeaderMessage> for ConnectionHandler {
                 })
                 .map_err(|err| err.to_string());
         }
-        error!("Leader should be elected.");
+        error!("[ConnectionHandler] Leader should be elected.");
         Err("Leader should be elected.".to_string())
     }
 }
@@ -400,9 +417,9 @@ impl Handler<RegisterLocal> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: RegisterLocal, _: &mut Self::Context) -> Self::Result {
-        if let Some(db_communicator) = &self.db_communicator {
+        if let Some(db_middleman) = &self.db_middleman {
             info!("[ConnectionHandler] Registering new local.");
-            return db_communicator
+            return db_middleman
                 .try_send(db_middleman::RequestGetNewLocalId {
                     requestor_sl_middleman: msg.sl_middleman_addr,
                 })
@@ -426,7 +443,7 @@ impl Handler<ResponseGetNewLocalId> for ConnectionHandler {
 
     fn handle(&mut self, msg: ResponseGetNewLocalId, ctx: &mut Self::Context) -> Self::Result {
         info!(
-            "[ConnectionHandler] Got an assigned local id from DB: {}.",
+            "[ConnectionHandler] Got an assigned local id from DB: [{}].",
             msg.db_response_id
         );
 
@@ -469,10 +486,13 @@ impl Handler<StockFromLocal> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: StockFromLocal, _: &mut Self::Context) -> Self::Result {
-        info!("[ConnectionHandler] Received all stock from a local.");
+        info!(
+            "[ConnectionHandler] Received all stock from local: [{}].",
+            msg.local_id
+        );
 
-        if let Some(db_communicator) = &self.db_communicator {
-            return db_communicator
+        if let Some(db_middleman) = &self.db_middleman {
+            return db_middleman
                 .try_send(db_middleman::SendOnlineMsg {
                     msg_to_send: DBRequest::PostStockFromLocal {
                         local_id: msg.local_id,
@@ -557,14 +577,14 @@ impl Handler<WebOrderCompletedFromLocal> for ConnectionHandler {
 
     fn handle(&mut self, msg: WebOrderCompletedFromLocal, ctx: &mut Self::Context) -> Self::Result {
         if msg.order.is_local() {
-            error!("[ConnectionHandler] Order is not web.");
+            warn!("[ConnectionHandler] Order is not web.");
             return Err("Order is not web.".to_string());
         }
 
         if msg.order.get_ss_id_web() == Some(self.my_ss_id) {
             info!(
-                "[ConnectionHandler] Order completed by local {:?}.",
-                msg.order.get_local_id()
+                "[ConnectionHandler] Order completed by local: [{}].",
+                msg.order.get_local_id().ok_or("No id set on order")?
             );
             ctx.address()
                 .try_send(SendOrderResultToOrderWorker {
@@ -574,8 +594,8 @@ impl Handler<WebOrderCompletedFromLocal> for ConnectionHandler {
                 .map_err(|err| err.to_string())
         } else {
             info!(
-                "[ConnectionHandler] Redirecting order completed by local {:?}.",
-                msg.order.get_local_id()
+                "[ConnectionHandler] Redirecting order completed by local: [{}].",
+                msg.order.get_local_id().ok_or("No id set on order")?
             );
             ctx.address()
                 .try_send(SendOrderResultToOtherServer {
@@ -598,14 +618,14 @@ impl Handler<WebOrderCancelledFromLocal> for ConnectionHandler {
 
     fn handle(&mut self, msg: WebOrderCancelledFromLocal, ctx: &mut Self::Context) -> Self::Result {
         if msg.order.is_local() {
-            error!("[ConnectionHandler] Order is not web.");
+            warn!("[ConnectionHandler] Order is not web.");
             return Err("Order is not web.".to_string());
         }
 
         if msg.order.get_ss_id_web() == Some(self.my_ss_id) {
             info!(
-                "[ConnectionHandler] Order cancelled by local {:?}.",
-                msg.order.get_local_id()
+                "[ConnectionHandler] Order cancelled by local: [{}].",
+                msg.order.get_local_id().ok_or("No id set on order")?
             );
             ctx.address()
                 .try_send(SendOrderResultToOrderWorker {
@@ -615,8 +635,8 @@ impl Handler<WebOrderCancelledFromLocal> for ConnectionHandler {
                 .map_err(|err| err.to_string())
         } else {
             info!(
-                "[ConnectionHandler] Redirecting order cancelled by local {:?}.",
-                msg.order.get_local_id()
+                "[ConnectionHandler] Redirecting order cancelled by local: [{}].",
+                msg.order.get_local_id().ok_or("No id set on order")?
             );
             ctx.address()
                 .try_send(SendOrderResultToOtherServer {
@@ -634,17 +654,17 @@ impl Handler<WebOrderCancelledFromLocal> for ConnectionHandler {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct AskForStockProductFromOrderWorker {
+pub struct AskForStockProductByOrderWorker {
     pub product_name: String,
     pub worker_id: u16,
 }
 
-impl Handler<AskForStockProductFromOrderWorker> for ConnectionHandler {
+impl Handler<AskForStockProductByOrderWorker> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(
         &mut self,
-        msg: AskForStockProductFromOrderWorker,
+        msg: AskForStockProductByOrderWorker,
         ctx: &mut Self::Context,
     ) -> Self::Result {
         ctx.address()
@@ -668,8 +688,8 @@ impl Handler<WorkNewOrder> for ConnectionHandler {
 
     fn handle(&mut self, msg: WorkNewOrder, ctx: &mut Self::Context) -> Self::Result {
         info!(
-            "[Connection Handler] New order received from OrderWorker {:?}.",
-            msg.order.get_worker_id_web()
+            "[Connection Handler] New order received from OrderWorker: [{}].",
+            msg.order.get_worker_id_web().ok_or("No id set on order")?
         );
         ctx.address()
             .try_send(HandlingOrderDispatch { order: msg.order })
@@ -694,7 +714,7 @@ impl Handler<SendOrderResultToOrderWorker> for ConnectionHandler {
                 .get(&order_worker_id)
                 .ok_or_else(|| "OrderWorker not found.".to_string())?;
             info!(
-                "[ConnectionHandler] Sending order result to OrderWorker: {:?}.",
+                "[ConnectionHandler] Sending order result to OrderWorker: [{}].",
                 order_worker_id
             );
             if let Some(order_worker) = self.order_workers.get(&order_worker_id) {
@@ -735,7 +755,7 @@ impl Handler<HandlingOrderDispatch> for ConnectionHandler {
     fn handle(&mut self, msg: HandlingOrderDispatch, ctx: &mut Self::Context) -> Self::Result {
         if self.leader_ss_id == Some(self.my_ss_id) {
             let local_id = msg.order.get_local_id().ok_or("No local id set")?;
-            if let Some(sl_middleman) = self.sl_communicators.get(&local_id) {
+            if let Some(sl_middleman) = self.sl_middlemen.get(&local_id) {
                 return sl_middleman
                     .try_send(sl_middleman::SendOnlineMsg {
                         msg_to_send: SLMessage::WorkNewOrder {
@@ -779,13 +799,13 @@ impl Handler<HandlingCannotDispatchOrder> for ConnectionHandler {
         if msg.order.get_ss_id_web() == Some(self.my_ss_id) {
             let worker_id = msg.order.get_worker_id_web().ok_or("No worker id set")?;
             info!(
-                "[ConnectionHandler] Order cannot be dispatched from worker {} to local {}.",
+                "[ConnectionHandler] Order cannot be dispatched from worker [{}] to local [{}].",
                 worker_id,
                 msg.order.get_local_id().ok_or("No local id set")?
             );
             if let Some(order_worker) = self.order_workers.get(&worker_id) {
                 info!(
-                    "[ConnectionHandler] Giving order back to OrderWorker {}.",
+                    "[ConnectionHandler] Giving order back to OrderWorker: [{}].",
                     worker_id
                 );
                 order_worker
@@ -797,7 +817,7 @@ impl Handler<HandlingCannotDispatchOrder> for ConnectionHandler {
         }
 
         ctx.address()
-            .try_send(DelegateCannotDispatchOrderToLeader {
+            .try_send(RedirectCannotDispatchOrderMsgToProperDest {
                 order: msg.order.clone(),
             })
             .map_err(|err| err.to_string())
@@ -806,22 +826,22 @@ impl Handler<HandlingCannotDispatchOrder> for ConnectionHandler {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(),String>")]
-pub struct DelegateCannotDispatchOrderToLeader {
+pub struct RedirectCannotDispatchOrderMsgToProperDest {
     pub order: Order,
 }
 
-impl Handler<DelegateCannotDispatchOrderToLeader> for ConnectionHandler {
+impl Handler<RedirectCannotDispatchOrderMsgToProperDest> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(
         &mut self,
-        msg: DelegateCannotDispatchOrderToLeader,
+        msg: RedirectCannotDispatchOrderMsgToProperDest,
         _: &mut Self::Context,
     ) -> Self::Result {
         if let Some(dest_ss_id) = msg.order.get_ss_id_web() {
-            if let Some(dest_ss_middleman) = self.ss_communicators.get(&dest_ss_id) {
+            if let Some(dest_ss_middleman) = self.ss_middlemen.get(&dest_ss_id) {
                 info!(
-                    "[ConnectionHandler] Delegating order not dispached to leader {}.",
+                    "[ConnectionHandler] Redirecting the 'Cannot dispatch order' msg to server: [{}].",
                     dest_ss_id
                 );
                 dest_ss_middleman
@@ -853,9 +873,9 @@ impl Handler<DelegateOrderToLeader> for ConnectionHandler {
 
     fn handle(&mut self, msg: DelegateOrderToLeader, _: &mut Self::Context) -> Self::Result {
         if let Some(leader_ss_id) = self.leader_ss_id {
-            if let Some(leader_ss_middleman) = self.ss_communicators.get(&leader_ss_id) {
+            if let Some(leader_ss_middleman) = self.ss_middlemen.get(&leader_ss_id) {
                 info!(
-                    "[ConnectionHandler] Delegating order to leader {}.",
+                    "[ConnectionHandler] Delegating order to leader: [{}].",
                     leader_ss_id
                 );
                 leader_ss_middleman
@@ -886,7 +906,7 @@ impl Handler<SendOrderResultToOtherServer> for ConnectionHandler {
 
     fn handle(&mut self, msg: SendOrderResultToOtherServer, _: &mut Self::Context) -> Self::Result {
         if let Some(dest_ss_id) = msg.order.get_ss_id_web() {
-            if let Some(ss_middleman) = self.ss_communicators.get(&dest_ss_id) {
+            if let Some(ss_middleman) = self.ss_middlemen.get(&dest_ss_id) {
                 if ss_middleman
                     .try_send(ss_middleman::SendOnlineMsg {
                         msg_to_send: SSMessage::SolvedPreviouslyDelegatedOrder {
@@ -899,13 +919,13 @@ impl Handler<SendOrderResultToOtherServer> for ConnectionHandler {
                     .is_ok()
                 {
                     info!(
-                        "[ConnectionHandler] Order result sent to other server: {:?}.",
-                        msg.order
+                        "[ConnectionHandler] Order result sent to proper server: [{}].",
+                        dest_ss_id
                     );
                     return Ok(());
                 }
             }
-            error!("[ConnectionHandler] Could not send order result to other server. Saving as pending.");
+            warn!("[ConnectionHandler] Could not send order result to proper server. Saving as pending.");
             self.order_results_pending_to_redirect
                 .entry(dest_ss_id)
                 .and_modify(|v| v.push((msg.order.clone(), msg.was_completed)))
@@ -932,7 +952,7 @@ impl Handler<TrySendPendingOrderResultsToOtherServer> for ConnectionHandler {
         ctx: &mut Self::Context,
     ) -> Self::Result {
         info!(
-            "[ConnectionHandler] Trying to send pending order results to server {}.",
+            "[ConnectionHandler] Trying to send pending order results to server: [{}].",
             msg.dest_ss_id
         );
         if let Some(orders) = self
@@ -967,9 +987,9 @@ impl Handler<SendOrderResultToDataBase> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SendOrderResultToDataBase, _: &mut Self::Context) -> Self::Result {
-        if let Some(db_communicator) = &self.db_communicator {
+        if let Some(db_middleman) = &self.db_middleman {
             info!("[ConnectionHandler] Sending order result to DB.");
-            return db_communicator
+            return db_middleman
                 .try_send(db_middleman::SendOnlineMsg {
                     msg_to_send: DBRequest::PostOrderResult { order: msg.order }
                         .to_string()
@@ -1010,8 +1030,8 @@ impl Handler<AskForStockProduct> for ConnectionHandler {
                 .map_err(|err| err.to_string());
         }
 
-        if let Some(db_comminicator) = &self.db_communicator {
-            return db_comminicator
+        if let Some(db_middleman) = &self.db_middleman {
+            return db_middleman
                 .try_send(db_middleman::SendOnlineMsg {
                     msg_to_send: DBRequest::GetProductQuantityFromAllLocals {
                         ss_id: msg.requestor_ss_id,
@@ -1041,7 +1061,7 @@ impl Handler<RedirectAskForStockProduct> for ConnectionHandler {
 
     fn handle(&mut self, msg: RedirectAskForStockProduct, _: &mut Self::Context) -> Self::Result {
         if let Some(leader_ss_id) = self.leader_ss_id {
-            if let Some(leader_ss_middleman) = self.ss_communicators.get(&leader_ss_id) {
+            if let Some(leader_ss_middleman) = self.ss_middlemen.get(&leader_ss_id) {
                 leader_ss_middleman
                     .try_send(ss_middleman::SendOnlineMsg {
                         msg_to_send: SSMessage::DelegateAskForStockProductToLeader {
@@ -1063,25 +1083,25 @@ impl Handler<RedirectAskForStockProduct> for ConnectionHandler {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct HandleSolvedAskForStockProductFromDB {
+pub struct HandleSolvedQueryOfStockProductFromDB {
     pub ss_id: u16,
     pub worker_id: u16,
     pub product_name: String,
     pub stock: HashMap<u16, i32>,
 }
 
-impl Handler<HandleSolvedAskForStockProductFromDB> for ConnectionHandler {
+impl Handler<HandleSolvedQueryOfStockProductFromDB> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(
         &mut self,
-        msg: HandleSolvedAskForStockProductFromDB,
+        msg: HandleSolvedQueryOfStockProductFromDB,
         ctx: &mut Self::Context,
     ) -> Self::Result {
         if msg.ss_id != self.my_ss_id {
             return ctx
                 .address()
-                .try_send(RedirectSolvedAskForStockProductFromDB {
+                .try_send(RedirectSolvedQueryOfStockProductFromDB {
                     ss_id: msg.ss_id,
                     worker_id: msg.worker_id,
                     product_name: msg.product_name.clone(),
@@ -1092,11 +1112,11 @@ impl Handler<HandleSolvedAskForStockProductFromDB> for ConnectionHandler {
 
         if let Some(order_worker) = self.order_workers.get(&msg.worker_id) {
             info!(
-                "[ConnectionHandler] Sending product quantity to OrderWorker {:?}.",
+                "[ConnectionHandler] Sending product quantity to OrderWorker: [{}].",
                 msg.worker_id
             );
             return order_worker
-                .try_send(order_worker::SolvedStockProductForOrderWorker {
+                .try_send(order_worker::SolvedStockProductQueryForOrderWorker {
                     product_name: msg.product_name.clone(),
                     stock: msg.stock,
                     my_sl_id: self.my_sl_id,
@@ -1111,26 +1131,26 @@ impl Handler<HandleSolvedAskForStockProductFromDB> for ConnectionHandler {
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
-pub struct RedirectSolvedAskForStockProductFromDB {
+pub struct RedirectSolvedQueryOfStockProductFromDB {
     pub ss_id: u16,
     pub worker_id: u16,
     pub product_name: String,
     pub stock: HashMap<u16, i32>,
 }
 
-impl Handler<RedirectSolvedAskForStockProductFromDB> for ConnectionHandler {
+impl Handler<RedirectSolvedQueryOfStockProductFromDB> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(
         &mut self,
-        msg: RedirectSolvedAskForStockProductFromDB,
+        msg: RedirectSolvedQueryOfStockProductFromDB,
         _: &mut Self::Context,
     ) -> Self::Result {
         info!(
-            "[ConnectionHandler] Redirecting solved ask for stock product from DB to ss {:?}.",
+            "[ConnectionHandler] Redirecting solved query of stock product to proper server: [{}].",
             msg.ss_id
         );
-        if let Some(ss_middleman) = self.ss_communicators.get(&msg.ss_id) {
+        if let Some(ss_middleman) = self.ss_middlemen.get(&msg.ss_id) {
             ss_middleman
                 .try_send(ss_middleman::SendOnlineMsg {
                     msg_to_send: SSMessage::SolvedAskForStockProduct {
@@ -1165,9 +1185,9 @@ impl Handler<LeaderElection> for ConnectionHandler {
     fn handle(&mut self, _msg: LeaderElection, _ctx: &mut Self::Context) -> Self::Result {
         info!("[ConnectionHandler] LeaderElection message received");
 
-        if let Some(max_ss_id) = self.ss_communicators.keys().max() {
+        if let Some(max_ss_id) = self.ss_middlemen.keys().max() {
             if max_ss_id > &self.my_ss_id {
-                let ss_middleman = self.ss_communicators.get(max_ss_id).ok_or(format!(
+                let ss_middleman = self.ss_middlemen.get(max_ss_id).ok_or(format!(
                     "No SS middleman found for server with id {}",
                     max_ss_id
                 ))?;
@@ -1183,8 +1203,8 @@ impl Handler<LeaderElection> for ConnectionHandler {
         info!("[ConnectionHandler] I'm the new leader [{}]", self.my_ss_id);
         self.leader_ss_id = Some(self.my_ss_id);
         self.leader_sl_id = Some(self.my_sl_id);
-        for (ss_id, ss_middleman) in self.ss_communicators.iter() {
-            info!("[ConnectionHandler] Notifying server {}", ss_id);
+        for (ss_id, ss_middleman) in self.ss_middlemen.iter() {
+            info!("[ConnectionHandler] Notifying server: [{}]", ss_id);
             ss_middleman
                 .try_send(ss_middleman::SendSelectedLeader {
                     my_ss_id: self.my_ss_id,
@@ -1208,13 +1228,13 @@ impl Handler<LeaderSelected> for ConnectionHandler {
 
     fn handle(&mut self, msg: LeaderSelected, _ctx: &mut Self::Context) -> Self::Result {
         info!(
-            "[ConnectionHandler] New leader selected: {}",
+            "[ConnectionHandler] New leader selected: [{}]",
             msg.leader_ss_id
         );
         self.leader_ss_id = Some(msg.leader_ss_id);
         self.leader_sl_id = Some(msg.leader_sl_id);
 
-        for sl_middleman in self.sl_communicators.values() {
+        for sl_middleman in self.sl_middlemen.values() {
             sl_middleman
                 .try_send(sl_middleman::CloseConnection {})
                 .map_err(|err| err.to_string())?;
@@ -1225,19 +1245,19 @@ impl Handler<LeaderSelected> for ConnectionHandler {
 
 #[derive(Message)]
 #[rtype(result = "Result<(),String>")]
-pub struct CheckIfTheOneWhoClosedWasLeader {
+pub struct TriggerElectionIfNeededAfterClosedSS {
     pub closed_server_id: u16,
 }
 
-impl Handler<CheckIfTheOneWhoClosedWasLeader> for ConnectionHandler {
+impl Handler<TriggerElectionIfNeededAfterClosedSS> for ConnectionHandler {
     type Result = Result<(), String>;
 
     fn handle(
         &mut self,
-        msg: CheckIfTheOneWhoClosedWasLeader,
+        msg: TriggerElectionIfNeededAfterClosedSS,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
-        self.ss_communicators
+        self.ss_middlemen
             .remove(&msg.closed_server_id)
             .ok_or(format!(
                 "No SS middleman found for server with id {}",
@@ -1249,10 +1269,10 @@ impl Handler<CheckIfTheOneWhoClosedWasLeader> for ConnectionHandler {
             }
             self.leader_ss_id = None;
             self.leader_sl_id = None;
-            if let Some(max_ss_id) = self.ss_communicators.keys().max() {
-                if let Some(min_ss_id) = self.ss_communicators.keys().min() {
+            if let Some(max_ss_id) = self.ss_middlemen.keys().max() {
+                if let Some(min_ss_id) = self.ss_middlemen.keys().min() {
                     if &self.my_ss_id < min_ss_id {
-                        self.ss_communicators
+                        self.ss_middlemen
                             .get(max_ss_id)
                             .ok_or(format!(
                                 "No SS middleman found for server with id {}",

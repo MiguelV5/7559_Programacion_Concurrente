@@ -1,12 +1,20 @@
-//! # FerrisCommerce - Modulo de compras locales
+//! Ferris Local Shop is an application that simulates a local shop node in a distributed system
+//! that manages orders (both locally and the ones coming from the e-commerce nodes) and stock.
 //!
+//! The local shops are expected to have connections that are prone to be shut down at any time.
+//! This means that the local shop nodes are expected to communicate with the e-commerce nodes
+//! once they are reconnected, and inform them about missing updates such as
+//! the orders that were resolved while they were offline.
+//!
+//! The server nodes are also expected to have their connections shut down, thus the local shop
+//! nodes are expected to dinamically connect to the server nodes periodically when available.
 
 pub mod local_shop;
 
 use std::{error::Error, fmt};
 
 use local_shop::constants::DEFAULT_NUM_WORKERS;
-use tracing::{error, info, trace, warn};
+use tracing::{error, info, warn};
 
 use crate::local_shop::constants::{DEFAULT_ORDERS_FILEPATH, DEFAULT_STOCK_FILEPATH};
 
@@ -42,7 +50,8 @@ fn parse_args() -> Result<(String, String, usize), LocalShopError> {
     let mut num_workers = DEFAULT_NUM_WORKERS;
 
     if args.is_empty() {
-        info!("[LocalShop] No arguments provided, using default paths");
+        info!("[LocalShop] No arguments provided, using defaults: \n[ORDERS PATH: {}]  [STOCK PATH: {}]  [NUM WORKERS: {}]",
+            DEFAULT_ORDERS_FILEPATH, DEFAULT_STOCK_FILEPATH, DEFAULT_NUM_WORKERS);
         return Ok((order_path, stock_path, num_workers));
     }
 
@@ -56,13 +65,13 @@ fn parse_args() -> Result<(String, String, usize), LocalShopError> {
 
     for arg in args.chunks_exact(2) {
         if arg[0] == "-o" {
-            trace!("[LocalShop] Orders file path: {}", arg[1].to_owned());
+            info!("[LocalShop] Orders file path given: {}", arg[1].to_owned());
             order_path = arg[1].to_owned();
         } else if arg[0] == "-s" {
-            trace!("[LocalShop] Stock file path: {}", arg[1].to_owned());
+            info!("[LocalShop] Stock file path given: {}", arg[1].to_owned());
             stock_path = arg[1].to_owned();
         } else if arg[0] == "-w" {
-            trace!("[LocalShop] Number of workers: {}", arg[1].to_owned());
+            info!("[LocalShop] Number of workers: {}", arg[1].to_owned());
             num_workers = arg[1].parse::<usize>().map_err(|err| {
                 error!("[LocalShop] Invalid number of workers: {}", err);
                 LocalShopError::ArgsParsingError(String::from("Invalid number of workers"))

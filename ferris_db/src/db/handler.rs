@@ -1,9 +1,16 @@
+//! This module contains the main handler for the database. It is responsible for starting all the
+//! other components of the database, and for handling the input from the user.
+//!
+
 use actix::prelude::*;
 use std::sync::mpsc::{self, channel};
+use tracing::info;
 
 use super::{connection_handler, db_communicator, input_handler, stock_handler};
 
 pub fn start() -> Result<(), String> {
+    info!("Starting database");
+
     let (sender_of_tx_to_listener, receiver_of_tx_to_listener) = channel::<mpsc::Sender<String>>();
 
     let input_handle = input_handler::setup_input_listener(receiver_of_tx_to_listener);

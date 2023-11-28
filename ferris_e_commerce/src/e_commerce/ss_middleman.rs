@@ -1,27 +1,27 @@
-use std::sync::Arc;
+//! This module contains the `SSMiddleman` actor
+//!
+//! It is responsible for handling the direct communication with the other Ecommerce Servers via TCP.
 
+use super::connection_handler::{
+    AskForStockProduct, ConnectionHandler, HandleSolvedQueryOfStockProductFromDB,
+    HandlingCannotDispatchOrder, HandlingOrderDispatch, LeaderSelected, RegisterSSMiddleman,
+    WebOrderCancelledFromLocal, WebOrderCompletedFromLocal,
+};
+use crate::e_commerce::connection_handler::{
+    LeaderElection, RemoveSSMiddleman, TriggerElectionIfNeededAfterClosedSS,
+};
 use actix::{
     dev::ContextFutureSpawner, fut::wrap_future, Actor, Context, Handler, Message, StreamHandler,
 };
 use actix::{ActorContext, Addr, AsyncContext};
-use shared::communication::ss_message::SSMessage;
-use shared::model::order::Order;
-use tracing::{error, trace};
-
-use tokio::io::AsyncWriteExt;
-use tokio::io::WriteHalf;
-use tokio::net::TcpStream as AsyncTcpStream;
-use tokio::sync::Mutex;
-
-use crate::e_commerce::connection_handler::{
-    CheckIfTheOneWhoClosedWasLeader, LeaderElection, RemoveSSMiddleman,
+use shared::{communication::ss_message::SSMessage, model::order::Order};
+use std::sync::Arc;
+use tokio::{
+    io::{AsyncWriteExt, WriteHalf},
+    net::TcpStream as AsyncTcpStream,
+    sync::Mutex,
 };
-
-use super::connection_handler::{
-    AskForStockProduct, ConnectionHandler, HandleSolvedAskForStockProductFromDB,
-    HandlingCannotDispatchOrder, HandlingOrderDispatch, LeaderSelected, RegisterSSMiddleman,
-    WebOrderCancelledFromLocal, WebOrderCompletedFromLocal,
-};
+use tracing::{debug, error};
 
 pub struct SSMiddleman {
     pub connection_handler: Addr<ConnectionHandler>,
@@ -61,7 +61,7 @@ impl Handler<CloseConnection> for SSMiddleman {
 
     fn handle(&mut self, _: CloseConnection, ctx: &mut Self::Context) -> Self::Result {
         if let Some(ss_id) = self.connected_server_ss_id {
-            trace!(
+            debug!(
                 "[SSMiddleman] Connection finished from server id {:?}.",
                 self.connected_server_ss_id.ok_or_else(|| {
                     error!("[SSMiddleman] Error getting connected server id");
@@ -69,7 +69,7 @@ impl Handler<CloseConnection> for SSMiddleman {
             );
             self.connection_handler.do_send(RemoveSSMiddleman { ss_id });
         } else {
-            trace!("[SSMiddleman] Connection finished from unknown server.")
+            debug!("[SSMiddleman] Connection finished from unknown server.")
         }
 
         ctx.stop();
@@ -83,7 +83,7 @@ impl Handler<CloseConnection> for SSMiddleman {
 impl StreamHandler<Result<String, std::io::Error>> for SSMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
-            trace!("[ONLINE RECEIVER SS] Received msg: {}", msg);
+            debug!("[ONLINE RECEIVER SS] Received msg:\n{}", msg);
             if ctx
                 .address()
                 .try_send(HandleOnlineMsg { received_msg: msg })
@@ -97,10 +97,10 @@ impl StreamHandler<Result<String, std::io::Error>> for SSMiddleman {
     }
 
     fn finished(&mut self, ctx: &mut Self::Context) {
-        trace!("[ONLINE RECEIVER SS] Connection closed");
+        debug!("[ONLINE RECEIVER SS] Connection closed");
         if let Some(server_id) = self.connected_server_ss_id {
             self.connection_handler
-                .do_send(CheckIfTheOneWhoClosedWasLeader {
+                .do_send(TriggerElectionIfNeededAfterClosedSS {
                     closed_server_id: server_id,
                 });
         }
@@ -162,7 +162,7 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
                 stock,
             } => self
                 .connection_handler
-                .try_send(HandleSolvedAskForStockProductFromDB {
+                .try_send(HandleSolvedQueryOfStockProductFromDB {
                     ss_id: requestor_ss_id,
                     worker_id: requestor_worker_id,
                     product_name,
@@ -205,7 +205,7 @@ impl Handler<SendOnlineMsg> for SSMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SendOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
-        let online_msg = msg.msg_to_send + "\n";
+        let online_msg = msg.msg_to_send.clone() + "\n";
         let writer = self.connected_server_write_stream.clone();
         wrap_future::<_, Self>(async move {
             if writer
@@ -215,7 +215,7 @@ impl Handler<SendOnlineMsg> for SSMiddleman {
                 .await
                 .is_ok()
             {
-                trace!("[ONLINE SENDER SS]: {}", online_msg);
+                debug!("[ONLINE SENDER SS]: Sending msg:\n{}", msg.msg_to_send);
             } else {
                 error!("[ONLINE SENDER SS]: Error writing to stream")
             };

@@ -1,14 +1,19 @@
-use std::{net::TcpStream, sync::mpsc};
-
-use crate::e_commerce::connection_handler;
+//! This module is responsible for setting up the input listener.
+//!
+//! It is responsible for receiving commands from the user and sending them to
+//! the `ConnectionHandler` actor.
 
 use super::connection_handler::ConnectionHandler;
+use crate::e_commerce::connection_handler;
 use actix::prelude::*;
 use shared::{
-    model::constants::{CLOSE_CONNECTION_MSG, EXIT_MSG, START_ORDERS_MSG, WAKE_UP_CONNECTION},
+    model::constants::{
+        CLOSE_CONNECTION_COMMAND, EXIT_COMMAND, RECONNECT_COMMAND, START_ORDERS_COMMAND,
+    },
     port_binder::listener_binder::LOCALHOST,
 };
 use std::thread::JoinHandle;
+use std::{net::TcpStream, sync::mpsc};
 use tracing::{info, warn};
 
 pub fn setup_input_listener(
@@ -19,7 +24,7 @@ pub fn setup_input_listener(
     receiver_tx_to_ss: mpsc::Receiver<mpsc::Sender<String>>,
 ) -> JoinHandle<Result<(), String>> {
     std::thread::spawn(move || -> Result<(), String> {
-        info!("[InputHandler]  Input listener started");
+        info!("[InputHandler] Input listener started");
         let mut reader = std::io::stdin().lines();
 
         let connection_handler = receiver_of_connection_handler
@@ -29,29 +34,29 @@ pub fn setup_input_listener(
         let tx_to_ss = receiver_tx_to_ss.recv().map_err(|e| e.to_string())?;
 
         while let Some(Ok(line)) = reader.next() {
-            if line == EXIT_MSG {
+            if line == EXIT_COMMAND {
                 info!("[InputHandler] Exit command received");
-                let _ = tx_to_ss.send(EXIT_MSG.to_string());
+                let _ = tx_to_ss.send(EXIT_COMMAND.to_string());
                 let _ = TcpStream::connect(format!("{}:{}", LOCALHOST, servers_listening_port));
-                let _ = tx_to_sl.send(EXIT_MSG.to_string());
+                let _ = tx_to_sl.send(EXIT_COMMAND.to_string());
                 let _ = TcpStream::connect(format!("{}:{}", LOCALHOST, locals_listening_port));
 
                 connection_handler
                     .try_send(connection_handler::CloseSystem {})
                     .map_err(|err| err.to_string())?;
                 break;
-            } else if line == START_ORDERS_MSG {
+            } else if line == START_ORDERS_COMMAND {
                 info!("[InputHandler] Start command received");
                 connection_handler
                     .try_send(connection_handler::StartUp {})
                     .map_err(|err| err.to_string())?;
-            } else if line == CLOSE_CONNECTION_MSG {
+            } else if line == CLOSE_CONNECTION_COMMAND {
                 info!("[InputHandler] Close connection command received");
-                let _ = tx_to_ss.send(CLOSE_CONNECTION_MSG.to_string());
+                let _ = tx_to_ss.send(CLOSE_CONNECTION_COMMAND.to_string());
                 let _ = TcpStream::connect(format!("{}:{}", LOCALHOST, servers_listening_port));
-                let _ = tx_to_sl.send(CLOSE_CONNECTION_MSG.to_string());
+                let _ = tx_to_sl.send(CLOSE_CONNECTION_COMMAND.to_string());
                 let _ = TcpStream::connect(format!("{}:{}", LOCALHOST, locals_listening_port));
-            } else if line == WAKE_UP_CONNECTION {
+            } else if line == RECONNECT_COMMAND {
                 info!("[InputHandler] Restart connection command received");
                 connection_handler
                     .try_send(connection_handler::WakeUpConnection {})
@@ -59,7 +64,7 @@ pub fn setup_input_listener(
             } else {
                 warn!(
                     "[InputHandler] Unknown command. Available commands: {}, {}. {}, {}.",
-                    EXIT_MSG, START_ORDERS_MSG, CLOSE_CONNECTION_MSG, WAKE_UP_CONNECTION
+                    EXIT_COMMAND, START_ORDERS_COMMAND, CLOSE_CONNECTION_COMMAND, RECONNECT_COMMAND
                 );
             }
         }
