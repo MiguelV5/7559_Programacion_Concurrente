@@ -9,7 +9,7 @@
 //! handle the connections with the local shops.
 
 pub mod e_commerce;
-use e_commerce::constants::{DEFAULT_NUM_WORKERS, DEFAULT_ORDERS_FILEPATH};
+use e_commerce::constants::{DEFAULT_NUM_WORKERS, DEFAULT_ORDERS_FILENAME};
 use shared::{
     model::constants::{LOG_LVL_DEBUG, LOG_LVL_INFO, SL_INITIAL_PORT, SS_INITIAL_PORT},
     port_binder::listener_binder::LOCALHOST,
@@ -32,12 +32,12 @@ impl fmt::Display for EcommerceError {
 impl Error for EcommerceError {}
 
 pub fn run() -> Result<(), EcommerceError> {
-    let (servers_listening_port, locals_listening_port, orders_path, num_workers, log_lvl) =
+    let (servers_listening_port, locals_listening_port, orders_name, num_workers, log_lvl) =
         parse_args()?;
     init_logger(log_lvl);
     info!("[e-commerce] Starting e_commerce");
     e_commerce::handler::start(
-        &orders_path,
+        &orders_name,
         servers_listening_port,
         locals_listening_port,
         num_workers,
@@ -72,12 +72,12 @@ fn parse_args() -> Result<(u16, u16, String, u16, String), EcommerceError> {
     let args_quantity = args.len();
 
     if args_quantity < 4 || args_quantity % 2 != 0 {
-        println!("Usage: cargo run -p e_commerce -- -ss <servers_listening_port> -sl <locals_listening_port> [-o <orders_file_path>] [-w <num_workers>] [-l <log_level>]");
+        println!("Usage: cargo run -p e_commerce -- -ss <servers_listening_port> -sl <locals_listening_port> [-o <orders_file_name>] [-w <num_workers>] [-l <log_level>]");
         return Err(EcommerceError::ArgsParsingError(String::from(
             "Too few arguments",
         )));
     } else if args_quantity > 10 {
-        println!("Too many arguments were given\n Usage: cargo run -p e_commerce -- [<orders_file_path>]");
+        println!("Too many arguments were given\n Usage: cargo run -p e_commerce -- [<orders_file_name>]");
         return Err(EcommerceError::ArgsParsingError(String::from(
             "Too many arguments",
         )));
@@ -85,7 +85,7 @@ fn parse_args() -> Result<(u16, u16, String, u16, String), EcommerceError> {
 
     let mut servers_listening_port = SS_INITIAL_PORT;
     let mut locals_listening_port = SL_INITIAL_PORT;
-    let mut orders_file_path = String::from(DEFAULT_ORDERS_FILEPATH);
+    let mut orders_file_name = String::from(DEFAULT_ORDERS_FILENAME);
     let mut num_workers = DEFAULT_NUM_WORKERS;
     let mut log_lvl = String::from(LOG_LVL_INFO);
 
@@ -108,10 +108,10 @@ fn parse_args() -> Result<(u16, u16, String, u16, String), EcommerceError> {
             })?;
         } else if dual_arg[0] == "-o" {
             println!(
-                "[e-commerce] Orders file path given: {}",
+                "[e-commerce] Orders file name given: {}",
                 args[1].to_owned()
             );
-            orders_file_path = dual_arg[1].clone();
+            orders_file_name = dual_arg[1].clone();
         } else if dual_arg[0] == "-w" {
             if num_workers == 0 {
                 println!("[LocalShop] Invalid number of workers: {}", num_workers);
@@ -127,7 +127,7 @@ fn parse_args() -> Result<(u16, u16, String, u16, String), EcommerceError> {
             println!("[e-commerce] Log level: {}", args[1].to_owned());
             log_lvl = dual_arg[1].clone();
         } else {
-            println!("Usage: cargo run -p e_commerce -- -ss <servers_listening_port> -sl <locals_listening_port> [-o <orders_file_path>] [-w <num_workers>] [-l <log_level>]");
+            println!("Usage: cargo run -p e_commerce -- -ss <servers_listening_port> -sl <locals_listening_port> [-o <orders_file_name>] [-w <num_workers>] [-l <log_level>]");
             return Err(EcommerceError::ArgsParsingError(String::from(
                 "Invalid argument",
             )));
@@ -136,12 +136,12 @@ fn parse_args() -> Result<(u16, u16, String, u16, String), EcommerceError> {
 
     check_if_given_ports_are_valid(servers_listening_port, locals_listening_port)?;
 
-    println!("[LocalShop] Arguments: \n[SERVER PORT: {}]  [LOCAL PORT: {}]  [ORDERS PATH: {}]  [NUM WORKERS: {}]  [LOG LEVEL: {}]",
-    servers_listening_port, locals_listening_port, orders_file_path, num_workers, log_lvl);
+    println!("[LocalShop] Arguments: \n[SERVER PORT: {}]  [LOCAL PORT: {}]  [ORDERS FILE NAME: {}]  [NUM WORKERS: {}]  [LOG LEVEL: {}]",
+    servers_listening_port, locals_listening_port, orders_file_name, num_workers, log_lvl);
     Ok((
         servers_listening_port,
         locals_listening_port,
-        orders_file_path,
+        orders_file_name,
         num_workers,
         log_lvl,
     ))

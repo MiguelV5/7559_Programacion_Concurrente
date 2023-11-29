@@ -18,12 +18,12 @@ use std::{
 use tokio::join;
 
 pub fn start(
-    orders_file_path: &str,
+    orders_file_name: &str,
     servers_listening_port: u16,
     locals_listening_port: u16,
     num_workers: u16,
 ) -> Result<(), Box<dyn Error>> {
-    let orders = parse_given_orders(orders_file_path)?;
+    let orders = parse_given_orders(orders_file_name)?;
 
     let (sender_of_connection_handler, receiver_of_connection_handler) =
         channel::<Addr<ConnectionHandler>>();
@@ -54,12 +54,12 @@ pub fn start(
     Ok(())
 }
 
-fn parse_given_orders(orders_file_path: &str) -> Result<Vec<Order>, Box<dyn Error>> {
+fn parse_given_orders(orders_file_name: &str) -> Result<Vec<Order>, Box<dyn Error>> {
     let orders;
     if let Ok(orders_parser) = OrdersParser::new_web(&format!(
-        "{}/{}",
+        "{}/data/orders/{}",
         env!("CARGO_MANIFEST_DIR"),
-        orders_file_path
+        orders_file_name
     )) {
         orders = orders_parser.get_orders();
     } else {
