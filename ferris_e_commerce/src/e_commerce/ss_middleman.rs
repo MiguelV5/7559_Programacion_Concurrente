@@ -1,24 +1,27 @@
-use std::sync::Arc;
+//! This module contains the `SSMiddleman` actor
+//!
+//! It is responsible for handling the direct communication with the other Ecommerce Servers via TCP.
 
+use super::connection_handler::{
+    AskForStockProduct, ConnectionHandler, HandleSolvedQueryOfStockProductFromDB,
+    HandlingCannotDispatchOrder, HandlingOrderDispatch, LeaderSelected, RegisterSSMiddleman,
+    WebOrderCancelledFromLocal, WebOrderCompletedFromLocal,
+};
+use crate::e_commerce::connection_handler::{
+    LeaderElection, RemoveSSMiddleman, TriggerElectionIfNeededAfterClosedSS,
+};
 use actix::{
     dev::ContextFutureSpawner, fut::wrap_future, Actor, Context, Handler, Message, StreamHandler,
 };
 use actix::{ActorContext, Addr, AsyncContext};
-use shared::communication::ss_message::SSMessage;
-use shared::model::order::Order;
-use tracing::{error, info, trace};
-
-use tokio::io::AsyncWriteExt;
-use tokio::io::WriteHalf;
-use tokio::net::TcpStream as AsyncTcpStream;
-use tokio::sync::Mutex;
-
-use crate::e_commerce::connection_handler::{CheckIfTheOneWhoClosedWasLeader, LeaderElection};
-
-use super::connection_handler::{
-    ConnectionHandler, LeaderSelected, OrderCancelledFromLocal, OrderCompletedFromLocal,
-    RegisterSSMiddleman,
+use shared::{communication::ss_message::SSMessage, model::order::Order};
+use std::sync::Arc;
+use tokio::{
+    io::{AsyncWriteExt, WriteHalf},
+    net::TcpStream as AsyncTcpStream,
+    sync::Mutex,
 };
+use tracing::{debug, error};
 
 pub struct SSMiddleman {
     pub connection_handler: Addr<ConnectionHandler>,
@@ -45,10 +48,42 @@ impl Actor for SSMiddleman {
     type Context = Context<Self>;
 }
 
+//==================================================================//
+//============================= Set up =============================//
+//==================================================================//
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "()")]
+pub struct CloseConnection;
+
+impl Handler<CloseConnection> for SSMiddleman {
+    type Result = ();
+
+    fn handle(&mut self, _: CloseConnection, ctx: &mut Self::Context) -> Self::Result {
+        if let Some(ss_id) = self.connected_server_ss_id {
+            debug!(
+                "[SSMiddleman] Connection finished from server id {:?}.",
+                self.connected_server_ss_id.ok_or_else(|| {
+                    error!("[SSMiddleman] Error getting connected server id");
+                })
+            );
+            self.connection_handler.do_send(RemoveSSMiddleman { ss_id });
+        } else {
+            debug!("[SSMiddleman] Connection finished from unknown server.")
+        }
+
+        ctx.stop();
+    }
+}
+
+//=============================================================================//
+//============================= Incoming Messages =============================//
+//=============================================================================//
+
 impl StreamHandler<Result<String, std::io::Error>> for SSMiddleman {
     fn handle(&mut self, msg: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(msg) = msg {
-            trace!("[ONLINE RECEIVER SS] Received msg: {}", msg);
+            debug!("[ONLINE RECEIVER SS] Received msg:\n{}", msg);
             if ctx
                 .address()
                 .try_send(HandleOnlineMsg { received_msg: msg })
@@ -62,10 +97,10 @@ impl StreamHandler<Result<String, std::io::Error>> for SSMiddleman {
     }
 
     fn finished(&mut self, ctx: &mut Self::Context) {
-        trace!("[ONLINE RECEIVER SS] Connection closed");
+        debug!("[ONLINE RECEIVER SS] Connection closed");
         if let Some(server_id) = self.connected_server_ss_id {
             self.connection_handler
-                .do_send(CheckIfTheOneWhoClosedWasLeader {
+                .do_send(TriggerElectionIfNeededAfterClosedSS {
                     closed_server_id: server_id,
                 });
         }
@@ -84,37 +119,6 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
 
     fn handle(&mut self, msg: HandleOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
         match SSMessage::from_string(&msg.received_msg).map_err(|err| err.to_string())? {
-            SSMessage::ElectLeader { requestor_id: _ } => {
-                self.connection_handler
-                    .try_send(LeaderElection {})
-                    .map_err(|err| err.to_string())?;
-            }
-            SSMessage::SelectedLeader {
-                leader_ss_id,
-                leader_sl_id,
-            } => {
-                self.connection_handler
-                    .try_send(LeaderSelected {
-                        leader_ss_id,
-                        leader_sl_id,
-                    })
-                    .map_err(|err| err.to_string())?;
-            }
-            SSMessage::DelegateOrderToLeader { order } => {
-                info!("ORDER DELEGATED: {:?}", order);
-            }
-            SSMessage::SolvedPreviouslyDelegatedOrder {
-                order,
-                was_completed,
-            } => {
-                info!("REDIRECTED ORDER SOLVED: {:?}", order);
-                ctx.address()
-                    .try_send(HandleSolvedOrder {
-                        order,
-                        was_completed,
-                    })
-                    .map_err(|err| err.to_string())?;
-            }
             SSMessage::TakeMyId { ss_id, sl_id } => {
                 self.connected_server_ss_id = Some(ss_id);
                 self.connected_server_sl_id = Some(sl_id);
@@ -123,12 +127,73 @@ impl Handler<HandleOnlineMsg> for SSMiddleman {
                         ss_id,
                         ss_middleman_addr: ctx.address(),
                     })
-                    .map_err(|err| err.to_string())?;
+                    .map_err(|err| err.to_string())
             }
-        };
-        Ok(())
+            SSMessage::ElectLeader { requestor_id: _ } => self
+                .connection_handler
+                .try_send(LeaderElection {})
+                .map_err(|err| err.to_string()),
+            SSMessage::SelectedLeader {
+                leader_ss_id,
+                leader_sl_id,
+            } => self
+                .connection_handler
+                .try_send(LeaderSelected {
+                    leader_ss_id,
+                    leader_sl_id,
+                })
+                .map_err(|err| err.to_string()),
+            SSMessage::DelegateAskForStockProductToLeader {
+                requestor_ss_id,
+                requestor_worker_id,
+                product_name,
+            } => self
+                .connection_handler
+                .try_send(AskForStockProduct {
+                    requestor_ss_id,
+                    requestor_worker_id,
+                    product_name,
+                })
+                .map_err(|err| err.to_string()),
+            SSMessage::SolvedAskForStockProduct {
+                requestor_ss_id,
+                requestor_worker_id,
+                product_name,
+                stock,
+            } => self
+                .connection_handler
+                .try_send(HandleSolvedQueryOfStockProductFromDB {
+                    ss_id: requestor_ss_id,
+                    worker_id: requestor_worker_id,
+                    product_name,
+                    stock,
+                })
+                .map_err(|err| err.to_string()),
+            SSMessage::DelegateOrderToLeader { order } => self
+                .connection_handler
+                .try_send(HandlingOrderDispatch { order })
+                .map_err(|err| err.to_string()),
+            SSMessage::SolvedPreviouslyDelegatedOrder {
+                order,
+                was_completed,
+            } => ctx
+                .address()
+                .try_send(HandleSolvedOrder {
+                    order,
+                    was_completed,
+                })
+                .map_err(|err| err.to_string()),
+            SSMessage::CannotDispatchPreviouslyDelegatedOrder { order } => self
+                .connection_handler
+                .try_send(HandlingCannotDispatchOrder { order })
+                .map_err(|err| err.to_string()),
+        }
     }
 }
+
+//==============================================================================//
+//============================= Outcoming Messages =============================//
+//==============================================================================//
 
 #[derive(Message, Debug, PartialEq, Eq)]
 #[rtype(result = "Result<(), String>")]
@@ -140,7 +205,7 @@ impl Handler<SendOnlineMsg> for SSMiddleman {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SendOnlineMsg, ctx: &mut Self::Context) -> Self::Result {
-        let online_msg = msg.msg_to_send + "\n";
+        let online_msg = msg.msg_to_send.clone() + "\n";
         let writer = self.connected_server_write_stream.clone();
         wrap_future::<_, Self>(async move {
             if writer
@@ -150,7 +215,7 @@ impl Handler<SendOnlineMsg> for SSMiddleman {
                 .await
                 .is_ok()
             {
-                trace!("[ONLINE SENDER SS]: {}", online_msg);
+                debug!("[ONLINE SENDER SS]: Sending msg:\n{}", msg.msg_to_send);
             } else {
                 error!("[ONLINE SENDER SS]: Error writing to stream")
             };
@@ -159,8 +224,6 @@ impl Handler<SendOnlineMsg> for SSMiddleman {
         Ok(())
     }
 }
-
-// ================================================================================
 
 #[derive(Message)]
 #[rtype(result = "Result<(),String>")]
@@ -274,11 +337,11 @@ impl Handler<HandleSolvedOrder> for SSMiddleman {
     fn handle(&mut self, msg: HandleSolvedOrder, _ctx: &mut Self::Context) -> Self::Result {
         if msg.was_completed {
             self.connection_handler
-                .try_send(OrderCompletedFromLocal { order: msg.order })
+                .try_send(WebOrderCompletedFromLocal { order: msg.order })
                 .map_err(|err| err.to_string())?;
         } else {
             self.connection_handler
-                .try_send(OrderCancelledFromLocal { order: msg.order })
+                .try_send(WebOrderCancelledFromLocal { order: msg.order })
                 .map_err(|err| err.to_string())?;
         }
         Ok(())

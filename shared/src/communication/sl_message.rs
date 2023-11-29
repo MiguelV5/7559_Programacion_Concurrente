@@ -18,7 +18,7 @@ impl Error for SLMessageError {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum SLMessage {
-    LeaderMessage { leader_id: u16 },
+    LeaderMessage { leader_sl_id: u16 },
     LocalSuccessfullyRegistered { local_id: u16 },
     LocalSuccessfullyLoggedIn,
     AskAllStock,

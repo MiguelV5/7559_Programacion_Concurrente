@@ -1,16 +1,7 @@
-use std::{
-    collections::HashMap,
-    sync::mpsc::{channel, Sender},
-};
-
-use actix::{Actor, Addr, SyncArbiter};
-use actix_rt::System;
-use shared::{
-    model::{order::Order, stock_product::Product},
-    parsers::{orders_parser::OrdersParser, stock_parser::StockParser},
-};
-
-use crate::LocalShopError;
+//! This module contains the logic for starting the local shop.
+//! It starts the connection handler, the order handler, the stock handler and the order workers.
+//! It also starts both the input handler which listens for user input, and calls for
+//! startup of the connection with the e-commerce.
 
 use super::{
     connection_handler::ConnectionHandler,
@@ -18,6 +9,17 @@ use super::{
     order_handler::{self, OrderHandler},
     order_worker::OrderWorker,
     stock_handler::StockHandler,
+};
+use crate::LocalShopError;
+use actix::{Actor, Addr, SyncArbiter};
+use actix_rt::System;
+use shared::{
+    model::{order::Order, stock_product::Product},
+    parsers::{orders_parser::OrdersParser, stock_parser::StockParser},
+};
+use std::{
+    collections::HashMap,
+    sync::mpsc::{channel, Sender},
 };
 
 pub fn start(

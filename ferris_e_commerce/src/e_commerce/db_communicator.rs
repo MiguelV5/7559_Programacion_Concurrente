@@ -1,3 +1,6 @@
+//! This module is responsible for setting up the connection to the database and
+//! creating the `DBMiddleman` actor.
+
 use std::sync::Arc;
 
 use actix::{Actor, Addr, AsyncContext};
@@ -12,22 +15,21 @@ use tracing::info;
 
 use crate::e_commerce::db_middleman::DBMiddleman;
 
-pub async fn setup_db_connection() -> Result<Addr<DBMiddleman>, String> {
-    try_connect_to_db().await
-}
+use super::connection_handler::ConnectionHandler;
 
-async fn try_connect_to_db() -> Result<Addr<DBMiddleman>, String> {
-    let addr = format!("{}", DATABASE_IP);
+pub async fn setup_db_connection(
+    connection_handler: Addr<ConnectionHandler>,
+) -> Result<Addr<DBMiddleman>, String> {
+    let addr = DATABASE_IP.to_string();
 
-    if let Ok(stream) = AsyncTcpStream::connect(addr.clone()).await {
-        info!("Connected to db at {}", addr);
-        let (reader, writer) = split(stream);
-        let db_middleman = DBMiddleman::create(|ctx| {
-            ctx.add_stream(LinesStream::new(BufReader::new(reader).lines()));
-            DBMiddleman::new(Arc::new(Mutex::new(writer)))
-        });
-        Ok(db_middleman)
-    } else {
-        Err(format!("Error connecting to db at {}", addr))
-    }
+    let stream = AsyncTcpStream::connect(addr.clone())
+        .await
+        .map_err(|err| err.to_string())?;
+    info!("Connected to db: [{}]", addr);
+    let (reader, writer) = split(stream);
+    let db_middleman = DBMiddleman::create(|ctx| {
+        ctx.add_stream(LinesStream::new(BufReader::new(reader).lines()));
+        DBMiddleman::new(Arc::new(Mutex::new(writer)), connection_handler)
+    });
+    Ok(db_middleman)
 }

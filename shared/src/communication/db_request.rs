@@ -17,7 +17,9 @@ pub enum DBRequest {
     PostOrderResult {
         order: Order,
     },
-    GetProductQuantityByLocalId {
+    GetProductQuantityFromAllLocals {
+        ss_id: u16,
+        worker_id: u16,
         product_name: String,
     },
 }

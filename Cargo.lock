@@ -170,6 +170,7 @@ dependencies = [
  "actix",
  "actix-rt",
  "futures-channel",
+ "rand",
  "serde",
  "serde_json",
  "shared",

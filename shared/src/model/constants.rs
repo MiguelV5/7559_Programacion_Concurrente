@@ -8,8 +8,11 @@ pub const DATABASE_IP: &str = "127.0.0.1:9999";
 
 pub const CONNECTION_FINISHED: &str = "Conection finished";
 
+pub const LOG_LVL_INFO: &str = "info";
+pub const LOG_LVL_DEBUG: &str = "debug";
+
 // ==================== COMMANDS ====================
-pub const CLOSE_CONNECTION_MSG: &str = "cc";
-pub const WAKE_UP_CONNECTION: &str = "rc";
-pub const EXIT_MSG: &str = "q";
-pub const START_ORDERS_MSG: &str = "s";
+pub const CLOSE_CONNECTION_COMMAND: &str = "cc";
+pub const RECONNECT_COMMAND: &str = "rc";
+pub const EXIT_COMMAND: &str = "q";
+pub const START_ORDERS_COMMAND: &str = "s";
