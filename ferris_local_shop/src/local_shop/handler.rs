@@ -27,12 +27,12 @@ pub fn start(
     stock_path: String,
     num_workers: usize,
 ) -> Result<(), LocalShopError> {
-    let orders_path = env!("CARGO_MANIFEST_DIR").to_owned() + &orders_path;
+    let orders_path = env!("CARGO_MANIFEST_DIR").to_owned() + "/data/orders/" + &orders_path;
     let orders_parser = OrdersParser::new_local(&orders_path)
         .map_err(|err| LocalShopError::OrdersFileParsingError(err.to_string()))?;
     let local_orders = orders_parser.get_orders();
 
-    let stock_products_path = env!("CARGO_MANIFEST_DIR").to_owned() + &stock_path;
+    let stock_products_path = env!("CARGO_MANIFEST_DIR").to_owned() + "/data/stock/" + &stock_path;
     let stock_parser = StockParser::new(&stock_products_path)
         .map_err(|err| LocalShopError::StockFileParsingError(err.to_string()))?;
     let stock = stock_parser.get_products();

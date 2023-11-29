@@ -16,7 +16,7 @@ use std::{error::Error, fmt};
 use local_shop::constants::DEFAULT_NUM_WORKERS;
 use shared::model::constants::{LOG_LVL_DEBUG, LOG_LVL_INFO};
 
-use crate::local_shop::constants::{DEFAULT_ORDERS_FILEPATH, DEFAULT_STOCK_FILEPATH};
+use crate::local_shop::constants::{DEFAULT_ORDERS_FILENAME, DEFAULT_STOCK_FILENAME};
 
 #[derive(Debug)]
 pub enum LocalShopError {
@@ -57,25 +57,25 @@ fn parse_args() -> Result<(String, String, usize, String), LocalShopError> {
     let mut args: Vec<String> = std::env::args().collect();
     args.remove(0);
 
-    let mut order_path = DEFAULT_ORDERS_FILEPATH.to_string();
-    let mut stock_path = DEFAULT_STOCK_FILEPATH.to_string();
+    let mut order_name = DEFAULT_ORDERS_FILENAME.to_string();
+    let mut stock_name = DEFAULT_STOCK_FILENAME.to_string();
     let mut num_workers = DEFAULT_NUM_WORKERS;
     let mut log_lvl = LOG_LVL_INFO.to_string();
 
     if args.is_empty() {
-        println!("[LocalShop] No arguments provided, using defaults: \n[ORDERS PATH: {}]  [STOCK PATH: {}]  [NUM WORKERS: {}]  [LOG LEVEL: INFO]",
-            DEFAULT_ORDERS_FILEPATH, DEFAULT_STOCK_FILEPATH, DEFAULT_NUM_WORKERS);
-        return Ok((order_path, stock_path, num_workers, log_lvl));
+        println!("[LocalShop] No arguments provided, using defaults: \n[ORDERS FILE NAME: {}]  [STOCK FILE NAME: {}]  [NUM WORKERS: {}]  [LOG LEVEL: INFO]",
+            DEFAULT_ORDERS_FILENAME, DEFAULT_STOCK_FILENAME, DEFAULT_NUM_WORKERS);
+        return Ok((order_name, stock_name, num_workers, log_lvl));
     } else if args.len() % 2 != 0 {
         println!("[LocalShop] Invalid arguments");
         println!(
-            "Usage: cargo run -p ferris_local_shop -- [-o <orders_file_path>] [-s <stock_file_path>] [-w <num_workers>] [-l <log_level>]"
+            "Usage: cargo run -p ferris_local_shop -- [-o <orders_file_name>] [-s <stock_file_name>] [-w <num_workers>] [-l <log_level>]"
         );
         return Err(LocalShopError::ArgsParsingError(String::from(
             "Invalid argument.",
         )));
     } else if args.len() > 10 {
-        println!("Too many arguments were given\n Usage: cargo run -p e_commerce -- [<orders_file_path>]");
+        println!("Too many arguments were given\n Usage: cargo run -p e_commerce -- [<orders_file_name>]");
         return Err(LocalShopError::ArgsParsingError(String::from(
             "Too many arguments",
         )));
@@ -83,11 +83,11 @@ fn parse_args() -> Result<(String, String, usize, String), LocalShopError> {
 
     for arg in args.chunks_exact(2) {
         if arg[0] == "-o" {
-            println!("[LocalShop] Orders file path given: {}", arg[1].to_owned());
-            order_path = arg[1].to_owned();
+            println!("[LocalShop] Orders file name given: {}", arg[1].to_owned());
+            order_name = arg[1].to_owned();
         } else if arg[0] == "-s" {
-            println!("[LocalShop] Stock file path given: {}", arg[1].to_owned());
-            stock_path = arg[1].to_owned();
+            println!("[LocalShop] Stock file name given: {}", arg[1].to_owned());
+            stock_name = arg[1].to_owned();
         } else if arg[0] == "-w" {
             println!("[LocalShop] Number of workers: {}", arg[1].to_owned());
             num_workers = arg[1].parse::<usize>().map_err(|err| {
@@ -106,7 +106,7 @@ fn parse_args() -> Result<(String, String, usize, String), LocalShopError> {
         } else {
             println!("[LocalShop] Invalid argument: {}", arg[0].to_owned());
             println!(
-                "Usage: cargo run -p ferris_local_shop -- [-o <orders_file_path>] [-s <stock_file_path>] [-w <num_workers>] [-l <log_level>]"
+                "Usage: cargo run -p ferris_local_shop -- [-o <orders_file_name>] [-s <stock_file_name>] [-w <num_workers>] [-l <log_level>]"
             );
             return Err(LocalShopError::ArgsParsingError(String::from(
                 "Invalid argument.",
@@ -114,14 +114,14 @@ fn parse_args() -> Result<(String, String, usize, String), LocalShopError> {
         }
     }
 
-    println!("[LocalShop] Arguments: \n[ORDERS PATH: {}]  [STOCK PATH: {}]  [NUM WORKERS: {}]  [LOG LEVEL: {}]",
-    order_path, stock_path, num_workers, log_lvl);
+    println!("[LocalShop] Arguments: \n[ORDERS NAME: {}]  [STOCK NAME: {}]  [NUM WORKERS: {}]  [LOG LEVEL: {}]",
+    order_name, stock_name, num_workers, log_lvl);
 
-    Ok((order_path, stock_path, num_workers, log_lvl))
+    Ok((order_name, stock_name, num_workers, log_lvl))
 }
 
 pub fn run() -> Result<(), LocalShopError> {
-    let (orders_path, stock_path, num_workers, log_lvl) = parse_args()?;
+    let (orders_name, stock_name, num_workers, log_lvl) = parse_args()?;
     init_logger(log_lvl);
-    local_shop::handler::start(orders_path, stock_path, num_workers)
+    local_shop::handler::start(orders_name, stock_name, num_workers)
 }
