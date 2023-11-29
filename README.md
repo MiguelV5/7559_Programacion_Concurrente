@@ -25,6 +25,10 @@
 
 ---
 
+![Ferry](2023-2c-tp-ferris-appreciators-2/assets/imgs/ferris.gif)
+
+---
+
 ## Introducción
 
 El presente trabajo práctico tiene como objetivo la creación de software para el manejo de stocks de una cadena de tiendas distribuida por todo el país.
