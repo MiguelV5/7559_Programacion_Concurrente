@@ -188,12 +188,14 @@ Se espera que todas las órdenes sean finalizadas exitosamente.
 ### Resultado esperado:
 Se espera que el local continúe procesando órdenes locales y órdenes ya recibidas web luego de su desconexión. En el momento en que el local es conectado nuevamente a la red, el mismo debería informar todas las órdenes que fueron realizadas en ese intervalo de tiempo y se debe informar a la base de datos sobre los completados para que pueda mantener el stock de los locales actualizado.
 
+### Caso 7: “Procesamiento de órdenes de ambos y corte de conexión en el e-commerce secundario”
+
 #### Actores:
 - Base de Datos
 - E-commerce principal:
-  - Órdenes: -
-  - Workers: DEFAULT (3)
-- E-commerce secundario: 
+  - Órdenes: [Archivo de órdenes 4](#archivo-de-órdenes-4-orders4txt)
+  - Workers: 1
+- E-commerce secundario:
   - Órdenes: [Archivo de órdenes 5](#archivo-de-órdenes-5-orders5txt)
   - Workers: 2
 - Local 1: 
@@ -206,7 +208,7 @@ Se espera que el local continúe procesando órdenes locales y órdenes ya recib
   - Workers: 1
 
 #### Resultado esperado:
-El objetivo principal es que el e-commerce principal haga llegar órdenes de un e-commerce secundario a alguno de los locales y se le interrumpa la conexión al e-commerce secundario. Esto generará que luego de haberse completados las órdenes en los locales, las mismas no encuentren el e-commerce que las generó y por lo tanto tengan que ser almacenadas en el actual e-commerce principal. Al momento de reconectarse el e-commerce secundario, se espera que el e-commerce principal le dé todas las órdenes, preguntas de stock y órdenes no tomadas por locales, dado que cada uno de los e-commerce tiene un back up de las transacciones no entregadas empaquetadas por e-commerce.
+El objetivo principal es que se haga una elección de leader en el medio de procesamiento de órdenes de múltiples locales e e-commerces a partir de una desconexión del e-commerce principal. Se espera que los resultados de las órdenes emitidas previo a la desconexión queden almacenadas en el nuevo e-commerce principal. Luego de que se vuelva a levantar la conexión, se debe asignar como leader al e-commerce que estaba sin conexión y además devolverle el resultado de las órdenes que no pudo recibir mientras se encontraba desconectado.
 
 ### Caso 8: “Procesamiento de órdenes de ambos y corte de conexión en el e-commerce secundario justo antes de recibir la orden del líder”
 #### Actores:
@@ -227,4 +229,4 @@ El objetivo principal es que el e-commerce principal haga llegar órdenes de un 
   - Workers: 1
     
 #### Resultado esperado:
-El objetivo principal de este caso es similar al Caso 6, con la diferencia de que se debe poder visualizar como el e-commerce principal continúa procesando sus propias órdenes.
+El objetivo principal es que el e-commerce principal haga llegar órdenes de un e-commerce secundario a alguno de los locales y se le interrumpa la conexión al e-commerce secundario. Esto generará que luego de haberse completados las órdenes en los locales, las mismas no encuentren el e-commerce que las generó y por lo tanto tengan que ser almacenadas en el actual e-commerce principal. Al momento de reconectarse el e-commerce secundario, se espera que el e-commerce principal le dé todas las órdenes, preguntas de stock y órdenes no tomadas por locales, dado que cada uno de los e-commerce tiene un back up de las transacciones no entregadas empaquetadas por e-commerce.
