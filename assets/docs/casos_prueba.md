@@ -3,7 +3,7 @@
 ---
 
 <p align="left">
-    <img alt="arquitectura" src="ferris2.gif" height="5%"/>
+    <img alt="arquitectura" src="ferris2.gif" weight="10%"/>
 </p>
 
 ---
