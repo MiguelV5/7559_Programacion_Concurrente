@@ -21,6 +21,7 @@ pub fn start(
     orders_file_path: &str,
     servers_listening_port: u16,
     locals_listening_port: u16,
+    num_workers: u16,
 ) -> Result<(), Box<dyn Error>> {
     let orders = parse_given_orders(orders_file_path)?;
 
@@ -44,6 +45,7 @@ pub fn start(
         sender_of_connection_handler,
         sender_tx_to_sl,
         sender_tx_to_ss,
+        num_workers,
     ))?;
 
     input_handle
@@ -74,12 +76,18 @@ async fn start_async(
     sender_of_connection_handler: mpsc::Sender<Addr<ConnectionHandler>>,
     sender_tx_to_sl: mpsc::Sender<mpsc::Sender<String>>,
     sender_tx_to_ss: mpsc::Sender<mpsc::Sender<String>>,
+    num_workers: u16,
 ) -> Result<(), Box<dyn Error>> {
     let (tx_from_input_to_sl, rx_from_input_to_sl) = channel::<String>();
     let (tx_from_input_to_ss, rx_from_input_to_ss) = channel::<String>();
 
-    let connection_handler =
-        start_actors(orders, servers_listening_port, locals_listening_port).await?;
+    let connection_handler = start_actors(
+        orders,
+        servers_listening_port,
+        locals_listening_port,
+        num_workers,
+    )
+    .await?;
     sender_of_connection_handler
         .send(connection_handler.clone())
         .map_err(|_| "Error sending order handler")?;
@@ -113,6 +121,7 @@ async fn start_actors(
     orders: Vec<Order>,
     ss_id: u16,
     sl_id: u16,
+    num_workers: u16,
 ) -> Result<Addr<ConnectionHandler>, Box<dyn Error>> {
     let order_handler = OrderHandler::new(&orders).start();
     let connection_handler = ConnectionHandler::new(order_handler.clone(), ss_id, sl_id).start();
@@ -123,7 +132,7 @@ async fn start_actors(
         })
         .await??;
 
-    for order_worker_id in 0..3 {
+    for order_worker_id in 0..num_workers {
         let order_worker = OrderWorker::new(
             order_worker_id,
             order_handler.clone(),

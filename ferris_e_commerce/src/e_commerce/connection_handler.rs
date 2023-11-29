@@ -40,6 +40,31 @@ use super::{
     ss_middleman::SSMiddleman,
 };
 
+type ServerId = u16;
+type WasCompleted = bool;
+type WorkerId = u16;
+type ProductName = String;
+type SolvedStockQuery = HashMap<u16, i32>;
+
+type OrderResultBackUp = (Order, WasCompleted);
+type SolvedQueryBackUp = (WorkerId, ProductName, SolvedStockQuery);
+
+struct ConnectionHandlerBackUp {
+    solved_query_request_pending_to_redirect: HashMap<ServerId, Vec<SolvedQueryBackUp>>,
+    order_not_taken_to_redirect: HashMap<ServerId, Vec<Order>>,
+    order_results_pending_to_redirect: HashMap<ServerId, Vec<OrderResultBackUp>>,
+}
+
+impl ConnectionHandlerBackUp {
+    pub fn new() -> Self {
+        Self {
+            order_not_taken_to_redirect: HashMap::new(),
+            order_results_pending_to_redirect: HashMap::new(),
+            solved_query_request_pending_to_redirect: HashMap::new(),
+        }
+    }
+}
+
 pub struct ConnectionHandler {
     order_handler: Addr<OrderHandler>,
 
@@ -55,7 +80,7 @@ pub struct ConnectionHandler {
 
     db_middleman: Option<Addr<DBMiddleman>>,
 
-    order_results_pending_to_redirect: HashMap<u16, Vec<(Order, bool)>>,
+    back_up: ConnectionHandlerBackUp,
 
     tx_ss_console: Option<tokio::sync::mpsc::Sender<String>>,
     tx_sl_console: Option<tokio::sync::mpsc::Sender<String>>,
@@ -79,7 +104,7 @@ impl ConnectionHandler {
 
             db_middleman: None,
 
-            order_results_pending_to_redirect: HashMap::new(),
+            back_up: ConnectionHandlerBackUp::new(),
 
             tx_ss_console: None,
             tx_sl_console: None,
@@ -172,6 +197,17 @@ impl Handler<RegisterSSMiddleman> for ConnectionHandler {
         info!("[ConnectionHandler] Registering new SS: [{}]", msg.ss_id);
         self.ss_middlemen
             .insert(msg.ss_id, msg.ss_middleman_addr.clone());
+
+        ctx.address()
+            .try_send(TrySendSolvedQueryOfStockProductFromDBToOtherServer {
+                dest_ss_id: msg.ss_id,
+            })
+            .map_err(|err| err.to_string())?;
+        ctx.address()
+            .try_send(TrySendPendingNotTakenOrderToOtherServer {
+                dest_ss_id: msg.ss_id,
+            })
+            .map_err(|err| err.to_string())?;
         ctx.address()
             .try_send(TrySendPendingOrderResultsToOtherServer {
                 dest_ss_id: msg.ss_id,
@@ -385,7 +421,7 @@ pub struct AskLeaderMessage {
 impl Handler<AskLeaderMessage> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: AskLeaderMessage, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: AskLeaderMessage, ctx: &mut Self::Context) -> Self::Result {
         if let Some(leader_id) = self.leader_sl_id {
             info!(
                 "[ConnectionHandler] Current leader: [{}]. Sending to SL.",
@@ -403,7 +439,11 @@ impl Handler<AskLeaderMessage> for ConnectionHandler {
                 .map_err(|err| err.to_string());
         }
         error!("[ConnectionHandler] Leader should be elected.");
-        Err("Leader should be elected.".to_string())
+        ctx.address()
+            .try_send(AskLeaderMessage {
+                sl_middleman_addr: msg.sl_middleman_addr.clone(),
+            })
+            .map_err(|err| err.to_string())
     }
 }
 
@@ -855,10 +895,58 @@ impl Handler<RedirectCannotDispatchOrderMsgToProperDest> for ConnectionHandler {
                     .map_err(|err| err.to_string())?;
                 return Ok(());
             }
+            warn!("[ConnectionHandler] No server found, saving order not taken as pending.");
+            self.back_up
+                .order_not_taken_to_redirect
+                .entry(dest_ss_id)
+                .and_modify(|v| v.push(msg.order.clone()))
+                .or_insert(vec![msg.order.clone()]);
+            return Ok(());
         }
 
-        error!("[ConnectionHandler] No server found.");
-        Err("No server found".to_string())
+        error!(
+            "[ConnectionHandler] Cannot dispatch order not taken, no ss id set: {:?}.",
+            msg.order
+        );
+        Err("Cannot dispatch order not taken msg not redirected.".to_string())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct TrySendPendingNotTakenOrderToOtherServer {
+    pub dest_ss_id: u16,
+}
+
+impl Handler<TrySendPendingNotTakenOrderToOtherServer> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(
+        &mut self,
+        msg: TrySendPendingNotTakenOrderToOtherServer,
+        ctx: &mut Self::Context,
+    ) -> Self::Result {
+        info!(
+            "[ConnectionHandler] Trying to send not taken orders to server: [{}].",
+            msg.dest_ss_id
+        );
+        if let Some(orders) = self
+            .back_up
+            .order_not_taken_to_redirect
+            .get_mut(&msg.dest_ss_id)
+        {
+            if let Some(order) = orders.pop() {
+                ctx.address()
+                    .try_send(HandlingCannotDispatchOrder { order })
+                    .map_err(|err| err.to_string())?;
+                ctx.address()
+                    .try_send(TrySendPendingNotTakenOrderToOtherServer {
+                        dest_ss_id: msg.dest_ss_id,
+                    })
+                    .map_err(|err| err.to_string())?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -871,7 +959,7 @@ pub struct DelegateOrderToLeader {
 impl Handler<DelegateOrderToLeader> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: DelegateOrderToLeader, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: DelegateOrderToLeader, ctx: &mut Self::Context) -> Self::Result {
         if let Some(leader_ss_id) = self.leader_ss_id {
             if let Some(leader_ss_middleman) = self.ss_middlemen.get(&leader_ss_id) {
                 info!(
@@ -889,8 +977,10 @@ impl Handler<DelegateOrderToLeader> for ConnectionHandler {
             }
         }
 
-        error!("[ConnectionHandler] No leader selected yet");
-        Err("No leader selected yet".to_string())
+        warn!("[ConnectionHandler] No leader selected yet, trying to send it again.");
+        ctx.address()
+            .try_send(HandlingOrderDispatch { order: msg.order })
+            .map_err(|err| err.to_string())
     }
 }
 
@@ -926,10 +1016,12 @@ impl Handler<SendOrderResultToOtherServer> for ConnectionHandler {
                 }
             }
             warn!("[ConnectionHandler] Could not send order result to proper server. Saving as pending.");
-            self.order_results_pending_to_redirect
+            self.back_up
+                .order_results_pending_to_redirect
                 .entry(dest_ss_id)
                 .and_modify(|v| v.push((msg.order.clone(), msg.was_completed)))
                 .or_insert(vec![(msg.order.clone(), msg.was_completed)]);
+            return Ok(());
         }
 
         error!("[ConnectionHandler] SSMiddleman not found in the order.");
@@ -956,6 +1048,7 @@ impl Handler<TrySendPendingOrderResultsToOtherServer> for ConnectionHandler {
             msg.dest_ss_id
         );
         if let Some(orders) = self
+            .back_up
             .order_results_pending_to_redirect
             .get_mut(&msg.dest_ss_id)
         {
@@ -1059,7 +1152,7 @@ struct RedirectAskForStockProduct {
 impl Handler<RedirectAskForStockProduct> for ConnectionHandler {
     type Result = Result<(), String>;
 
-    fn handle(&mut self, msg: RedirectAskForStockProduct, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RedirectAskForStockProduct, ctx: &mut Self::Context) -> Self::Result {
         if let Some(leader_ss_id) = self.leader_ss_id {
             if let Some(leader_ss_middleman) = self.ss_middlemen.get(&leader_ss_id) {
                 leader_ss_middleman
@@ -1076,8 +1169,15 @@ impl Handler<RedirectAskForStockProduct> for ConnectionHandler {
                 return Ok(());
             }
         }
-        error!("[ConnectionHandler] No leader selected yet.");
-        Err("No leader selected yet".to_string())
+
+        warn!("[ConnectionHandler] No leader selected yet, trying to send it again.");
+        ctx.address()
+            .try_send(AskForStockProduct {
+                requestor_ss_id: msg.requestor_ss_id,
+                requestor_worker_id: msg.requestor_worker_id,
+                product_name: msg.product_name.clone(),
+            })
+            .map_err(|err| err.to_string())
     }
 }
 
@@ -1124,6 +1224,7 @@ impl Handler<HandleSolvedQueryOfStockProductFromDB> for ConnectionHandler {
                 })
                 .map_err(|err| err.to_string());
         }
+
         error!("[ConnectionHandler] OrderWorker not found to redirect asked stock.");
         Err("OrderWorker not found to redirect asked stock.".to_string())
     }
@@ -1166,8 +1267,56 @@ impl Handler<RedirectSolvedQueryOfStockProductFromDB> for ConnectionHandler {
             return Ok(());
         }
 
-        error!("[ConnectionHandler] No server found");
-        Err("No server found".to_string())
+        warn!("[ConnectionHandler] No server found, saving the query as pending.");
+        self.back_up
+            .solved_query_request_pending_to_redirect
+            .entry(msg.ss_id)
+            .and_modify(|v| v.push((msg.worker_id, msg.product_name.clone(), msg.stock.clone())))
+            .or_insert(vec![(msg.worker_id, msg.product_name, msg.stock)]);
+        Ok(())
+    }
+}
+
+#[derive(Message, Debug, PartialEq, Eq)]
+#[rtype(result = "Result<(), String>")]
+pub struct TrySendSolvedQueryOfStockProductFromDBToOtherServer {
+    pub dest_ss_id: u16,
+}
+
+impl Handler<TrySendSolvedQueryOfStockProductFromDBToOtherServer> for ConnectionHandler {
+    type Result = Result<(), String>;
+
+    fn handle(
+        &mut self,
+        msg: TrySendSolvedQueryOfStockProductFromDBToOtherServer,
+        ctx: &mut Self::Context,
+    ) -> Self::Result {
+        info!(
+            "[ConnectionHandler] Trying to send solved query from database to server: [{}].",
+            msg.dest_ss_id
+        );
+        if let Some(orders) = self
+            .back_up
+            .solved_query_request_pending_to_redirect
+            .get_mut(&msg.dest_ss_id)
+        {
+            if let Some((worker_id, product_name, stock)) = orders.pop() {
+                ctx.address()
+                    .try_send(HandleSolvedQueryOfStockProductFromDB {
+                        ss_id: msg.dest_ss_id,
+                        worker_id,
+                        product_name,
+                        stock,
+                    })
+                    .map_err(|err| err.to_string())?;
+                ctx.address()
+                    .try_send(TrySendSolvedQueryOfStockProductFromDBToOtherServer {
+                        dest_ss_id: msg.dest_ss_id,
+                    })
+                    .map_err(|err| err.to_string())?;
+            }
+        }
+        Ok(())
     }
 }
 

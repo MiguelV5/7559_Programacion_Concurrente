@@ -9,7 +9,7 @@ use tracing::info;
 use super::{connection_handler, db_communicator, input_handler, stock_handler};
 
 pub fn start() -> Result<(), String> {
-    info!("Starting database");
+    info!("[Database] Starting.");
 
     let (sender_of_tx_to_listener, receiver_of_tx_to_listener) = channel::<mpsc::Sender<String>>();
 
