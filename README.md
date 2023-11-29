@@ -25,7 +25,9 @@
 
 ---
 
-![Ferry](2023-2c-tp-ferris-appreciators-2/assets/imgs/ferris.gif)
+<p align="center">
+    <img alt="arquitectura" src="./assets/imgs/ferris.gif" width="100%"/>
+</p>
 
 ---
 
