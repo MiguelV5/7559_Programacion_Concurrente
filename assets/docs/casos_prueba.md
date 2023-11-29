@@ -6,72 +6,6 @@
 
 ---
 
-## Modelos de Stocks
-
-### Stock 1 [stock1.txt]
-- Producto 1: 5 unidades
-- Producto 2: 5 unidades
-- Producto 3: 5 unidades
-
-### Stock 2 [stock2.txt]
-- Producto 2: 10 unidades
-- Producto 4: 10 unidades
-- Producto 5: 10 unidades
-- Producto 6: 10 unidades
-
-### Stock 3 [stock3.txt]
-- Producto 1: 10 unidades
-- Producto 3: 10 unidades
-- Producto 5: 10 unidades
-- Producto 6: 10 unidades
-
-## Modelo de Órdenes
-
-### Archivo de órdenes 1 [orders1.txt]
-- Orden 1
-  - Producto 1: 3 unidades
-  - Producto 2: 5 unidades
-- Orden 2
-  - Producto 3: 7 unidades
-- Orden 3
-  - Producto 1: 2 unidades
-  - Producto 3: 5 unidades
-
-### Archivo de órdenes 2 [orders2.txt]
-- Orden 1
-  - Producto 2: 2 unidades
-  - Producto 4: 2 unidades
-- Orden 2
-  - Producto 6: 2 unidades
-- Orden 3
-  - Producto 2: 2 unidades
-  - Producto 6: 2 unidades
-  
-### Archivo de órdenes 3 [orders3.txt]
-- Orden 1
-  - Producto 1: 2 unidades
-  - Producto 3: 2 unidades
-- Orden 2
-  - Producto 5: 2 unidades
-- Orden 3
-  - Producto 1: 2 unidades
-  - Producto 6: 2 unidades
-
-### Archivo de órdenes 4 [orders4.txt]
-- Orden 1 
-  - Producto 1: 2 unidades
-  - Producto 2: 2 unidades
-- Orden 2
-  - Producto 3: 2 unidades
-  - Producto 6: 2 unidades
-
-### Archivo de órdenes 5 [orders5.txt]
-- Orden 1
-  - Producto 4: 2 unidades
-  - Producto 5: 2 unidades
-- Orden 2
-  - Producto 6: 2 unidades
-
 ## Casos de prueba
 
 ### Caso 1: “Procesamiento de órdenes de un local”
@@ -236,3 +170,70 @@ El objetivo principal es que se haga una elección de leader en el medio de proc
     
 #### Resultado esperado:
 El objetivo principal es que el e-commerce principal haga llegar órdenes de un e-commerce secundario a alguno de los locales y se le interrumpa la conexión al e-commerce secundario. Esto generará que luego de haberse completados las órdenes en los locales, las mismas no encuentren el e-commerce que las generó y por lo tanto tengan que ser almacenadas en el actual e-commerce principal. Al momento de reconectarse el e-commerce secundario, se espera que el e-commerce principal le dé todas las órdenes, preguntas de stock y órdenes no tomadas por locales, dado que cada uno de los e-commerce tiene un back up de las transacciones no entregadas empaquetadas por e-commerce.
+
+## Modelos de Stocks
+
+### Stock 1 [stock1.txt]
+- Producto 1: 5 unidades
+- Producto 2: 5 unidades
+- Producto 3: 5 unidades
+
+### Stock 2 [stock2.txt]
+- Producto 2: 10 unidades
+- Producto 4: 10 unidades
+- Producto 5: 10 unidades
+- Producto 6: 10 unidades
+
+### Stock 3 [stock3.txt]
+- Producto 1: 10 unidades
+- Producto 3: 10 unidades
+- Producto 5: 10 unidades
+- Producto 6: 10 unidades
+
+## Modelo de Órdenes
+
+### Archivo de órdenes 1 [orders1.txt]
+- Orden 1
+  - Producto 1: 3 unidades
+  - Producto 2: 5 unidades
+- Orden 2
+  - Producto 3: 7 unidades
+- Orden 3
+  - Producto 1: 2 unidades
+  - Producto 3: 5 unidades
+
+### Archivo de órdenes 2 [orders2.txt]
+- Orden 1
+  - Producto 2: 2 unidades
+  - Producto 4: 2 unidades
+- Orden 2
+  - Producto 6: 2 unidades
+- Orden 3
+  - Producto 2: 2 unidades
+  - Producto 6: 2 unidades
+  
+### Archivo de órdenes 3 [orders3.txt]
+- Orden 1
+  - Producto 1: 2 unidades
+  - Producto 3: 2 unidades
+- Orden 2
+  - Producto 5: 2 unidades
+- Orden 3
+  - Producto 1: 2 unidades
+  - Producto 6: 2 unidades
+
+### Archivo de órdenes 4 [orders4.txt]
+- Orden 1 
+  - Producto 1: 2 unidades
+  - Producto 2: 2 unidades
+- Orden 2
+  - Producto 3: 2 unidades
+  - Producto 6: 2 unidades
+
+### Archivo de órdenes 5 [orders5.txt]
+- Orden 1
+  - Producto 4: 2 unidades
+  - Producto 5: 2 unidades
+- Orden 2
+  - Producto 6: 2 unidades
+
