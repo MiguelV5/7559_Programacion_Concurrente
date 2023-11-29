@@ -214,7 +214,7 @@ impl Handler<OrderCompleted> for OrderHandler {
         }
 
         info!(
-            "[OrderHandler] OrderWorker: [{}] completed an order: {:?}",
+            "[OrderHandler] OrderWorker: [{}] completed an order:\n{:?}",
             order_worker.id, msg.order
         );
         order_worker.given_order = None;
@@ -252,9 +252,8 @@ impl Handler<OrderCancelled> for OrderHandler {
         }
 
         info!(
-            "[OrderHandler] OrderWorker: [{}] cancelled an order: {:?}.",
-            order_worker.id,
-            order_worker.given_order.as_ref().ok_or("No order.")?
+            "[OrderHandler] OrderWorker: [{}] cancelled an order:\n{:?}.",
+            order_worker.id, msg.order
         );
         order_worker.given_order = None;
 

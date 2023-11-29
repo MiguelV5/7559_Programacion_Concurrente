@@ -21,7 +21,7 @@ use tokio::{
     net::TcpStream as AsyncTcpStream,
     sync::Mutex,
 };
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 pub struct SLMiddleman {
     pub local_id: Option<u16>,
@@ -88,8 +88,6 @@ impl StreamHandler<Result<String, std::io::Error>> for SLMiddleman {
             {
                 error!("[ONLINE RECEIVER SL] Error sending msg to handler");
             }
-        } else if let Err(err) = msg {
-            error!("[ONLINE RECEIVER SL] Error in received msg: {}", err);
         }
     }
 
@@ -307,7 +305,7 @@ impl Handler<SendOnlineMsg> for SLMiddleman {
             {
                 debug!("[ONLINE SENDER SL]: Sending msg:\n{}", msg.msg_to_send);
             } else {
-                error!("[ONLINE SENDER SL]: Error writing to stream")
+                warn!("[ONLINE SENDER SL]: Error writing to stream")
             };
         })
         .spawn(ctx);

@@ -357,7 +357,7 @@ impl Handler<HandleFinishedOrder> for OrderHandler {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: HandleFinishedOrder, _: &mut Context<Self>) -> Self::Result {
-        info!("[OrderHandler] Handling finished order: {:?}.", msg.order);
+        info!("[OrderHandler] Handling finished order:\n{:?}.", msg.order);
         if let Order::Web(_) = msg.order {
             if let Some(connection_handler) = &self.connection_handler {
                 connection_handler

@@ -15,7 +15,7 @@ use tokio::{
     net::TcpStream,
     sync::Mutex,
 };
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 pub struct DBMiddleman {
     pub writer: Arc<Mutex<WriteHalf<TcpStream>>>,
@@ -41,8 +41,6 @@ impl StreamHandler<Result<String, std::io::Error>> for DBMiddleman {
             {
                 error!("[ONLINE RECEIVER DB] Error sending msg to handler");
             }
-        } else if let Err(err) = msg {
-            error!("[ONLINE RECEIVER DB] Error in received msg: {}", err);
         }
     }
 
@@ -125,7 +123,7 @@ impl Handler<SendOnlineMsg> for DBMiddleman {
             {
                 debug!("[ONLINE SENDER DB]: Sending msg:\n{}", msg.msg_to_send);
             } else {
-                error!("[ONLINE SENDER DB]: Error writing to stream")
+                warn!("[ONLINE SENDER DB]: Error writing to stream")
             };
         })
         .spawn(ctx);

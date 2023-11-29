@@ -226,6 +226,7 @@ impl Handler<LeaderMessage> for ConnectionHandler {
                 tx_close_connection
                     .try_send(LEADER_CHANGED.to_string())
                     .map_err(|err| err.to_string())?;
+                return Ok(());
             }
         }
         error!(
