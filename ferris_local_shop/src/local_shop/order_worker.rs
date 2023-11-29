@@ -365,6 +365,7 @@ impl Handler<RandomTakeReservedProduct> for OrderWorker {
                 self.id(),
                 product
             );
+            self.reserved_products.push(product.clone());
             ctx.address()
                 .try_send(SendUnreserveProduct {})
                 .map_err(|err| err.to_string())

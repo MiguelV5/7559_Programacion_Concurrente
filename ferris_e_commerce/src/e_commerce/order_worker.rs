@@ -119,7 +119,7 @@ impl Handler<SolvedStockProductQueryForOrderWorker> for OrderWorker {
                 .get_quantity();
 
             for (local_id, stock_quantity) in msg.stock.iter() {
-                if *stock_quantity > required_product_amount {
+                if *stock_quantity >= required_product_amount {
                     available_locals.push(*local_id);
                 }
             }

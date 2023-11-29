@@ -14,7 +14,7 @@ use crate::local_shop::order_worker;
 use actix::prelude::*;
 use shared::model::order::Order;
 use std::collections::HashMap;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct OrderWorkerStatus {
@@ -229,10 +229,18 @@ impl Handler<SendOrder> for OrderHandler {
                 .ok_or("No worker with given id.")?;
 
             if order_worker.given_order.is_some() {
-                error!(
+                warn!(
                     "[OrderHandler] OrderWorker [{}] had an order already.",
                     order_worker.id
                 );
+                match order {
+                    Order::Local(_) => {
+                        self.local_orders.push(order);
+                    }
+                    Order::Web(_) => {
+                        self.web_orders.push(order);
+                    }
+                }
                 return Err("Worker already has an order.".to_owned());
             }
 

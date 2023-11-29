@@ -1,7 +1,7 @@
 pub const SL_INITIAL_PORT: u16 = 11000;
-pub const SL_MAX_PORT: u16 = 11005;
+pub const SL_MAX_PORT: u16 = 11009;
 pub const SS_INITIAL_PORT: u16 = 15000;
-pub const SS_MAX_PORT: u16 = 15004;
+pub const SS_MAX_PORT: u16 = 15009;
 pub const LOCAHOST: &str = "127.0.0.1";
 
 pub const DATABASE_IP: &str = "127.0.0.1:9999";
