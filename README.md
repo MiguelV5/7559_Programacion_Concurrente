@@ -26,7 +26,7 @@
 ---
 
 <p align="center">
-    <img alt="arquitectura" src="./assets/imgs/ferris.gif" width="100%"/>
+    <img alt="arquitectura" src="./assets/imgs/ferris.gif" width="40%"/>
 </p>
 
 ---
