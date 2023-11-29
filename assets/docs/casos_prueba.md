@@ -1,5 +1,7 @@
 # Detalle de pruebas
 
+---
+
 <p align="left">
     <img alt="arquitectura" src="ferris2.gif" height="5%"/>
 </p>
@@ -170,6 +172,8 @@ El objetivo principal es que se haga una elección de leader en el medio de proc
     
 #### Resultado esperado:
 El objetivo principal es que el e-commerce principal haga llegar órdenes de un e-commerce secundario a alguno de los locales y se le interrumpa la conexión al e-commerce secundario. Esto generará que luego de haberse completados las órdenes en los locales, las mismas no encuentren el e-commerce que las generó y por lo tanto tengan que ser almacenadas en el actual e-commerce principal. Al momento de reconectarse el e-commerce secundario, se espera que el e-commerce principal le dé todas las órdenes, preguntas de stock y órdenes no tomadas por locales, dado que cada uno de los e-commerce tiene un back up de las transacciones no entregadas empaquetadas por e-commerce.
+
+---
 
 ## Modelos de Stocks
 
