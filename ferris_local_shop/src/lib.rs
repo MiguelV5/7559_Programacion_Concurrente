@@ -15,7 +15,6 @@ use std::{error::Error, fmt};
 
 use local_shop::constants::DEFAULT_NUM_WORKERS;
 use shared::model::constants::{LOG_LVL_DEBUG, LOG_LVL_INFO};
-use tracing::{error, info, warn};
 
 use crate::local_shop::constants::{DEFAULT_ORDERS_FILEPATH, DEFAULT_STOCK_FILEPATH};
 
