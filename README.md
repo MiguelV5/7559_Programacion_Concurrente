@@ -167,6 +167,6 @@ Se tomaron las siguientes definiciones en general para el sistema:
 - Archivo de órdenes de compra: son las compras que se realizan en cada uno de los locales/e-commerce. Estos vienen provistos desde un comienzo por archivos locales.
 - Bases de datos: existirán entidades que simularán bases de datos, con el objetivo de almacenar transacciones de compras que no hayan sido enviadas entre los e-commerce y también con el objetivo de almacenar el stock de los locales.
 
+## Casos de prueba
 
-
-
+Se desarrolló un [documento](./assets/docs/casos_prueba.md) que detalla los casos de prueba ejecutados para asegurar el correcto funcionamiento del programa.
