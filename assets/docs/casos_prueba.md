@@ -1,4 +1,4 @@
-# Casos de Prueba
+# Detalle de pruebas
 
 <p align="left">
     <img alt="arquitectura" src="ferris2.gif" height="5%"/>
