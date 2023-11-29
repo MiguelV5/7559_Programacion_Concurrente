@@ -1,11 +1,8 @@
 # Casos de Prueba
 
----
-
-<p align="center">
-    <img alt="arquitectura" src="/ferris2.gif" width="40%"/>
+<p align="left">
+    <img alt="arquitectura" src="ferris2.gif" height="5%"/>
 </p>
-
 
 ---
 
