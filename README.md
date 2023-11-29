@@ -148,11 +148,20 @@ Se implementan los siguientes actores:
 
 #### E-commerce
 
+A continuacion se ve una vista general de las comunicaciones principales entre threads/tasks al iniciar el proceso y realizar operaciones del e-commerce:
 
+<p align="center">
+    <img alt="local_shop" src="./assets/imgs/threads_e_commerce.png" width="100%"/>
+</p>
 
 
 #### Local shop
 
+A continuacion se ve una vista general de las comunicaciones principales entre threads/tasks al iniciar el proceso y realizar operaciones del local:
+
+<p align="center">
+    <img alt="local_shop" src="./assets/imgs/threads_local.png" width="100%"/>
+</p>
 
 
 ### Implementacion y Decisiones de diseño
