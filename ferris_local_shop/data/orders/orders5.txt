@@ -1,0 +1,2 @@
+Product4:2;Product5:2
+Product6:2

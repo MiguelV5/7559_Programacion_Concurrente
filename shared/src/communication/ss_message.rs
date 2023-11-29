@@ -1,8 +1,8 @@
-use std::{error::Error, fmt};
+use std::{collections::HashMap, error::Error, fmt};
 
 use serde::{Deserialize, Serialize};
 
-use super::order::Order;
+use crate::model::order::Order;
 
 #[derive(Debug)]
 pub enum SSMessageError {
@@ -18,32 +18,37 @@ impl Error for SSMessageError {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum SSMessage {
-    // General messages
+    TakeMyId {
+        ss_id: u16,
+        sl_id: u16,
+    },
     ElectLeader {
         requestor_id: u16,
     },
-    AckElectLeader,
     SelectedLeader {
         leader_ss_id: u16,
         leader_sl_id: u16,
     },
+    DelegateAskForStockProductToLeader {
+        requestor_ss_id: u16,
+        requestor_worker_id: u16,
+        product_name: String,
+    },
+    SolvedAskForStockProduct {
+        requestor_ss_id: u16,
+        requestor_worker_id: u16,
+        product_name: String,
+        stock: HashMap<u16, i32>,
+    },
     DelegateOrderToLeader {
         order: Order,
     },
-    AckDelegateOrderToLeader {
+    CannotDispatchPreviouslyDelegatedOrder {
         order: Order,
     },
-    SolvedPrevDelegatedOrder {
+    SolvedPreviouslyDelegatedOrder {
         order: Order,
-    },
-    AckSolvedPrevDelegatedOrder {
-        order: Order,
-    },
-    // Handshake messages
-    GetSSidAndSLid,
-    AckGetSSidAndSLid {
-        ss_id: u16,
-        sl_id: u16,
+        was_completed: bool,
     },
 }
 

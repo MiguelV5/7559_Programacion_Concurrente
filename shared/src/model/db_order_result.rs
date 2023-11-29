@@ -3,15 +3,15 @@ use serde::{Deserialize, Serialize};
 use super::order::Order;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OrderToDelivery {
+pub struct OrderResult {
     order: Order,
     ecommerce_id: u16,
     local_id: u16,
 }
 
-impl OrderToDelivery {
+impl OrderResult {
     pub fn new(product: Order, ecommerce_id: u16, local_id: u16) -> Self {
-        OrderToDelivery {
+        OrderResult {
             order: product,
             ecommerce_id,
             local_id,

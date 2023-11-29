@@ -1,11 +1,13 @@
-use super::connection_handler::ConnectionHandlerActor;
+//! This module is responsible for setting up the input listener.
+//!
+//! It is responsible for receiving commands from the user and sending them to
+//! the `ConnectionHandler` actor.
+
+use super::connection_handler::ConnectionHandler;
 use crate::local_shop::connection_handler;
 use actix::prelude::*;
 use shared::model::constants::*;
-use std::error::Error;
-use std::fmt;
-use std::sync::mpsc::Receiver;
-use std::thread::JoinHandle;
+use std::{error::Error, fmt, sync::mpsc::Receiver, thread::JoinHandle};
 use tracing::{info, warn};
 
 #[derive(Debug)]
@@ -22,39 +24,41 @@ impl fmt::Display for InputError {
 impl Error for InputError {}
 
 pub fn setup_input_listener(
-    data_receiver: Receiver<Addr<ConnectionHandlerActor>>,
+    rx_for_connection_handler_addr: Receiver<Addr<ConnectionHandler>>,
 ) -> JoinHandle<Result<(), InputError>> {
     std::thread::spawn(move || {
-        let order_handler = data_receiver
+        let connection_handler = rx_for_connection_handler_addr
             .recv()
             .map_err(|err| InputError::ReceivingDataError(err.to_string()))?;
         info!("[InputHandler] Input listener thread started");
         let mut reader = std::io::stdin().lines();
 
         while let Some(Ok(line)) = reader.next() {
-            if line == EXIT_MSG {
+            if line == EXIT_COMMAND {
                 info!("[InputHandler] Exit command received");
-                order_handler
+                connection_handler
                     .try_send(connection_handler::CloseSystem {})
                     .map_err(|err| InputError::SendError(err.to_string()))?;
                 break;
-            } else if line == START_ORDERS_MSG {
-                info!("[InputHandler] Push command received");
-                order_handler
+            } else if line == START_ORDERS_COMMAND {
+                info!("[InputHandler] Start command received");
+                connection_handler
                     .try_send(connection_handler::StartUp {})
                     .map_err(|err| InputError::SendError(err.to_string()))?;
-            } else if line == CLOSE_CONNECTION_MSG {
-                order_handler
+            } else if line == CLOSE_CONNECTION_COMMAND {
+                info!("[InputHandler] Close connection command received");
+                connection_handler
                     .try_send(connection_handler::StopConnection {})
                     .map_err(|err| InputError::SendError(err.to_string()))?;
-            } else if line == WAKE_UP_CONNECTION {
-                order_handler
+            } else if line == RECONNECT_COMMAND {
+                info!("[InputHandler] Restart connection command received");
+                connection_handler
                     .try_send(connection_handler::WakeUpConnection {})
                     .map_err(|err| InputError::SendError(err.to_string()))?;
             } else {
                 warn!(
                     "[InputHandler] Unknown command. Available commands: {}, {}. {}, {}.",
-                    EXIT_MSG, START_ORDERS_MSG, CLOSE_CONNECTION_MSG, WAKE_UP_CONNECTION
+                    EXIT_COMMAND, START_ORDERS_COMMAND, CLOSE_CONNECTION_COMMAND, RECONNECT_COMMAND
                 );
             }
         }

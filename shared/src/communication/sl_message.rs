@@ -2,7 +2,7 @@ use std::{error::Error, fmt};
 
 use serde::{Deserialize, Serialize};
 
-use super::order::Order;
+use crate::model::order::Order;
 
 #[derive(Debug)]
 pub enum SLMessageError {
@@ -18,10 +18,9 @@ impl Error for SLMessageError {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum SLMessage {
-    LeaderMessage { leader_id: u16 },
-    DontHaveLeaderYet,
-    LocalRegisteredMessage { local_id: u16 },
-    LocalLoggedInMessage,
+    LeaderMessage { leader_sl_id: u16 },
+    LocalSuccessfullyRegistered { local_id: u16 },
+    LocalSuccessfullyLoggedIn,
     AskAllStock,
     WorkNewOrder { order: Order },
 }
