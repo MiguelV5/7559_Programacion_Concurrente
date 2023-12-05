@@ -4,7 +4,7 @@
 
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/MiguelV5/MiguelV5/main/misc/logofiubatransparent_partialwhite.png" height="60%"/>
+  <img src="https://raw.githubusercontent.com/MiguelV5/MiguelV5/main/misc/logofiubatransparent_partialwhite.png" height="50%"/>
 </p>
 <br>
 
