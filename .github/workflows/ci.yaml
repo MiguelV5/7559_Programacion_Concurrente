@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [ main ]
+
+defaults:
+  run:
+    working-directory: ./
+
+jobs:
+  lint_and_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run fmt
+        run: cargo fmt --check
+      - name: Run check
+        run: cargo check --color always
+      - name: Run clippy
+        run: cargo clippy --color always -- -D warnings
+      - name: Run test
+        run: cargo test
+
