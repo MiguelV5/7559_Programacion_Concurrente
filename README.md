@@ -13,10 +13,8 @@
 <br>
 <p align="center">
 <font size="+3">
-Repositorio con trabajos prácticos de la materia, examenes y ejercicios adicionales dados en clase.
+Repositorio con trabajos prácticos de la materia, examenes y algunas soluciones a ejercicios adicionales de clase.
 <br>
-<!---( Repo original para entrega TP: <a href="https://github.com/">aquí</a> )--->
-<!---<br>--->
 <br>
 Segundo Cuatrimestre - 2023
 </font>
