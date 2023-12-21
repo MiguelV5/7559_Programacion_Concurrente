@@ -6,7 +6,7 @@
 
 1. Que es un deadlock, explique sus consecuencias en un programa concurrente.
 2. Mencione que complicaciones adicionales tienen los deadlocks ambientes de concurrencia distribuida.
-3. Explique los algoritmos de prevencion de deadlocks en ambientes distribuidos.
+3. Explique a detalle mecanismos de prevencion de deadlocks en ambientes distribuidos.
 
 ## Ejercicio 2
 
@@ -26,5 +26,5 @@
 
 ## Ejercicio 5
 
-Implementar en un programa con pseudo-codigo rust (utilizando el modelo de actores) un mecanismo para consultar en tiempo real el resultado parcial de una elección donde las mesas van emitiendo sus resultados propios de manera concurrente. 
+Implementar en un programa con pseudo-codigo rust (utilizando el modelo de actores) un mecanismo para consultar en tiempo real el resultado parcial de una elección donde las mesas van emitiendo sus votos propios de manera concurrente. 
 
